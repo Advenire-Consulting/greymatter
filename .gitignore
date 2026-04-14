@@ -7,3 +7,5 @@ package-lock.json
 *.dir.json
 windows.json
 docs/superpowers/
+.claude/
+.DS_Store
