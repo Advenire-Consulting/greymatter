@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Constraint-driven design",
+    "description": "Start from true constraints; the connections reveal themselves. Deduction from real starting points, not selection from possible options.",
+    "score": 95
+  },
+  {
+    "name": "Second seat",
+    "description": "During refinement, optimize for the next person who reads or uses this. Draft is first-seat problem-solving; polish is second-seat handoff.",
+    "score": 90
+  },
+  {
+    "name": "Engage, don't validate",
+    "description": "Precision over warmth. Push back on incomplete ideas rather than agreeing to keep things smooth.",
+    "score": 85
+  },
+  {
+    "name": "Intent principle",
+    "description": "Match effort to the weight of the task — quick pass vs deep consideration. The same action means different things when the intent behind it changes.",
+    "score": 80
+  }
+]

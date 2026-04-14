@@ -1,0 +1,16 @@
+{
+  "name": "greymatter",
+  "version": "0.1.0",
+  "description": "Unified code + documentation knowledge graph for Claude Code",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "scan": "node scripts/scan.js"
+  }
+}

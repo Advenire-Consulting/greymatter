@@ -1,0 +1,29 @@
+{
+  "conversation_recall": true,
+  "behavioral_signals": true,
+  "doc_layer": true,
+  "watch_directories": [],
+  "conversation_directories": [],
+  "signals": {
+    "threshold": 75,
+    "review_cadence_days": 30,
+    "staleness_months": 6
+  },
+  "orientation": {
+    "lazy": true
+  },
+  "hypothalamus": {
+    "database_files": "ask",
+    "secret_files": "block",
+    "high_blast_radius": "warn",
+    "config_files": "warn",
+    "generated_files": "inform",
+    "documented_files": "inform",
+    "blast_radius_threshold": 5
+  },
+  "extraction": {
+    "skip_directories": ["node_modules", ".git", "dist", "build", ".next", ".svelte-kit"],
+    "max_file_size_kb": 500
+  },
+  "tmp_cleanup_max_age_hours": 24
+}
