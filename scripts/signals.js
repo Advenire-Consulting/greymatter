@@ -8,6 +8,7 @@ const os = require('os');
 const { MemoryDB } = require('../lib/memory-db');
 const { MemoryQueries } = require('../lib/memory-queries');
 const { loadConfig } = require('../lib/config');
+const { detectOverlaps, consolidationSuggestion } = require('./lessons');
 
 function getDataDir() {
   return path.join(os.homedir(), '.claude', 'greymatter');
@@ -24,14 +25,16 @@ function getThreshold(config) {
     : 75;
 }
 
-// --generate: regenerate ~/.claude/rules/signals.md
-function cmdGenerate(dataDir, config) {
+// --generate: regenerate signals.md. Defaults to ~/.claude/rules/signals.md;
+// callers can override via rulesDir (used by session-start for test injection).
+function cmdGenerate(dataDir, config, rulesDir) {
   const db = openMemoryDb(dataDir);
   const queries = new MemoryQueries(db);
   const threshold = getThreshold(config);
   try {
     const md = queries.generateSignalsMd(threshold);
-    const signalsPath = path.join(os.homedir(), '.claude', 'rules', 'signals.md');
+    const destDir = rulesDir || path.join(os.homedir(), '.claude', 'rules');
+    const signalsPath = path.join(destDir, 'signals.md');
     fs.mkdirSync(path.dirname(signalsPath), { recursive: true });
     fs.writeFileSync(signalsPath, md, { mode: 0o644 });
     // Count active signals/forces above threshold
@@ -39,18 +42,6 @@ function cmdGenerate(dataDir, config) {
     const allSignals = queries.getAllSignals().filter(s => !s.archived && s.weight >= threshold);
     const forces = queries.getActiveForces(threshold);
     console.log(`Generated signals.md (${allSignals.length} signals, ${forces.length} forces)`);
-
-    // Write JSON sidecar for pre-tool-use hook (avoids opening memory.db on every hook)
-    const sidecarPath = path.join(dataDir, 'tmp', 'signal-patterns.json');
-    const activeSignals = db.db.prepare(
-      `SELECT label, file_pattern, trigger, polarity, weight, description
-       FROM signals WHERE archived = 0 ORDER BY weight DESC`
-    ).all();
-    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-    fs.writeFileSync(sidecarPath, JSON.stringify({
-      generated_at: new Date().toISOString(),
-      patterns: activeSignals,
-    }));
   } finally {
     db.close();
   }
@@ -84,12 +75,20 @@ function cmdReview(dataDir) {
         const desc = s.description ? ` — ${s.description}` : '';
         console.log(`  ${s.id}. [${s.weight}] (${s.polarity}) ${s.label}${desc}${archived}`);
       }
-      // Overlap detection: flag signals with similar labels
-      const overlaps = findOverlaps(group);
-      if (overlaps.length > 0) {
-        console.log(`  ⚠ Possible overlaps:`);
-        for (const [a, b] of overlaps) {
-          console.log(`    #${a.id} "${a.label}" / #${b.id} "${b.label}"`);
+      // Overlap detection via lessons.js: transitive clusters by label-similarity or file_pattern
+      const clusters = detectOverlaps(group);
+      if (clusters.length > 0) {
+        console.log(`  ⚠ Possible overlaps (${clusters.length} cluster${clusters.length === 1 ? '' : 's'}):`);
+        for (const cluster of clusters) {
+          const ids = cluster.map(s => `#${s.id}`).join(', ');
+          console.log(`    [${ids}]`);
+          for (const s of cluster) {
+            console.log(`      #${s.id} [${s.weight}] "${s.label}"`);
+          }
+          const merged = consolidationSuggestion(cluster);
+          if (merged) {
+            console.log(`      → suggested merge: [${merged.weight}] "${merged.label}"`);
+          }
         }
       }
       console.log('');
@@ -120,31 +119,6 @@ function cmdReview(dataDir) {
   } finally {
     db.close();
   }
-}
-
-// Simple fuzzy overlap: signals whose labels share significant word overlap
-function findOverlaps(group) {
-  const overlaps = [];
-  for (let i = 0; i < group.length; i++) {
-    for (let j = i + 1; j < group.length; j++) {
-      if (isOverlapping(group[i].label, group[j].label)) {
-        overlaps.push([group[i], group[j]]);
-      }
-    }
-  }
-  return overlaps;
-}
-
-function isOverlapping(a, b) {
-  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-  if (wordsA.size === 0 || wordsB.size === 0) return false;
-  let shared = 0;
-  for (const w of wordsA) {
-    if (wordsB.has(w)) shared++;
-  }
-  const minSize = Math.min(wordsA.size, wordsB.size);
-  return shared / minSize >= 0.5;
 }
 
 // --migrate: import from existing ~/.claude/brain/signals.db

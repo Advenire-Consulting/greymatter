@@ -14,7 +14,7 @@ Flag a behavioral moment — positive (nucleus accumbens) or negative (amygdala)
 
 4. **Propose a weight** (50–100). Higher weight = more important, loads earlier into context. Ask the user if it feels right.
 
-5. **Determine trigger.** Default is `passive` (loads at session start). Other options: `pre_write`, `pre_tool_use`, `session_start`. Most behavioral corrections are `passive`.
+5. **Determine trigger.** Default is `passive` (loads at session start). Use `pre_write` for rules that should fire when a specific `file_pattern` is about to be written — the pre-tool-use hook surfaces these as just-in-time guidance. Most behavioral corrections are `passive`.
 
 6. **Write the signal:**
    ```

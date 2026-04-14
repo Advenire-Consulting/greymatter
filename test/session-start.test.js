@@ -12,12 +12,14 @@ function makeTempDir() {
 
 describe('SessionStart', () => {
   let dataDir;
+  let rulesDir;
   // Capture and restore stdout.write across each test
   let originalWrite;
   let captured;
 
   beforeEach(() => {
     dataDir = makeTempDir();
+    rulesDir = makeTempDir();
     captured = '';
     originalWrite = process.stdout.write.bind(process.stdout);
     process.stdout.write = (data) => { captured += data; return true; };
@@ -26,12 +28,13 @@ describe('SessionStart', () => {
   afterEach(() => {
     process.stdout.write = originalWrite;
     fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(rulesDir, { recursive: true, force: true });
   });
 
   it('creates data directory structure on first run', () => {
     const { run } = require('../hooks/session-start');
-    run({ dataDir });
-    assert.ok(fs.existsSync(path.join(dataDir, 'rules')), 'rules/ should exist');
+    run({ dataDir, rulesDir });
+    assert.ok(fs.existsSync(rulesDir), 'rulesDir should exist');
     assert.ok(fs.existsSync(path.join(dataDir, 'tmp')), 'tmp/ should exist');
   });
 
@@ -39,7 +42,7 @@ describe('SessionStart', () => {
     const configPath = path.join(dataDir, 'config.json');
     assert.ok(!fs.existsSync(configPath), 'config.json should not exist yet');
     const { run } = require('../hooks/session-start');
-    run({ dataDir });
+    run({ dataDir, rulesDir });
     assert.ok(fs.existsSync(configPath), 'config.json should be created');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     assert.ok(typeof config.hypothalamus === 'object', 'hypothalamus section should be present');
@@ -58,25 +61,25 @@ describe('SessionStart', () => {
     fs.utimesSync(oldFile, oldTimeSec, oldTimeSec);
 
     const { run } = require('../hooks/session-start');
-    run({ dataDir, maxAgeMs: 24 * 60 * 60 * 1000 });
+    run({ dataDir, rulesDir, maxAgeMs: 24 * 60 * 60 * 1000 });
 
     assert.ok(!fs.existsSync(oldFile), 'old tmp file should have been deleted');
   });
 
-  it('generates brain-tools.md from tool-index.md when missing', () => {
+  it('generates greymatter-tools.md from tool-index.md when missing', () => {
     const { run } = require('../hooks/session-start');
-    run({ dataDir });
-    const brainTools = path.join(dataDir, 'rules', 'brain-tools.md');
-    assert.ok(fs.existsSync(brainTools), 'brain-tools.md should be generated');
-    const content = fs.readFileSync(brainTools, 'utf-8');
+    run({ dataDir, rulesDir });
+    const toolsMd = path.join(rulesDir, 'greymatter-tools.md');
+    assert.ok(fs.existsSync(toolsMd), 'greymatter-tools.md should be generated');
+    const content = fs.readFileSync(toolsMd, 'utf-8');
     // $PLUGIN_ROOT should be resolved to the actual path
     assert.ok(!content.includes('$PLUGIN_ROOT'), '$PLUGIN_ROOT placeholders should be resolved');
   });
 
   it('generates empty signals.md when missing', () => {
     const { run } = require('../hooks/session-start');
-    run({ dataDir });
-    const signalsMd = path.join(dataDir, 'rules', 'signals.md');
+    run({ dataDir, rulesDir });
+    const signalsMd = path.join(rulesDir, 'signals.md');
     assert.ok(fs.existsSync(signalsMd), 'signals.md should be generated');
     const content = fs.readFileSync(signalsMd, 'utf-8');
     assert.ok(content.includes('Behavioral Signals'), 'signals.md should have a heading');
@@ -84,7 +87,7 @@ describe('SessionStart', () => {
 
   it('outputs project list line', () => {
     const { run } = require('../hooks/session-start');
-    run({ dataDir });
+    run({ dataDir, rulesDir });
     assert.ok(captured.includes('Projects:'), 'stdout should contain Projects: line');
   });
 });

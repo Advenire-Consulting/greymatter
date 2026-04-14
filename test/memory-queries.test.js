@@ -117,18 +117,18 @@ describe('MemoryQueries', () => {
     assert.equal(sess, null);
   });
 
-  it('resolveAlias returns project + file for known alias', () => {
+  it('resolveAliases returns project + file rows for known alias', () => {
     seed(db);
-    const result = mq.resolveAlias('brain');
-    assert.ok(result);
-    assert.equal(result.project, 'thebrain');
-    assert.equal(result.file, 'lib/brain.js');
+    const rows = mq.resolveAliases('brain');
+    assert.ok(rows.length > 0);
+    assert.equal(rows[0].project, 'thebrain');
+    assert.equal(rows[0].file, 'lib/brain.js');
   });
 
-  it('resolveAlias returns null for unknown alias', () => {
+  it('resolveAliases returns empty array for unknown alias', () => {
     seed(db);
-    const result = mq.resolveAlias('nonexistent');
-    assert.equal(result, null);
+    const rows = mq.resolveAliases('nonexistent');
+    assert.deepEqual(rows, []);
   });
 
   it('listAliases returns all aliases when no project filter', () => {

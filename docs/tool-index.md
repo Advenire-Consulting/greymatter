@@ -110,7 +110,7 @@ Review all active signals grouped by type, sorted by weight. Shows count, estima
 token cost, and flags overlapping or contradictory signals.
 
 Signals are written via `/dopamine` and `/oxytocin` commands. The `signals.md` rules
-file at `~/.claude/greymatter/rules/signals.md` is regenerated automatically after
+file at `~/.claude/rules/signals.md` is regenerated automatically after
 each write.
 
 <!-- endregion -->

@@ -147,22 +147,6 @@ function run(options = {}) {
             }
           }
         }
-
-        // Write signal patterns sidecar while memDb is still open (avoids second open in pre-tool-use)
-        try {
-          const threshold = (config.signals && config.signals.threshold != null) ? config.signals.threshold : 0;
-          const activeSignals = memDb.db.prepare(
-            `SELECT label, file_pattern, trigger, polarity, weight, description
-             FROM signals WHERE archived = 0 AND weight >= ? ORDER BY weight DESC`
-          ).all(threshold);
-          const sidecarPath = path.join(tmpDir, 'signal-patterns.json');
-          fs.writeFileSync(sidecarPath, JSON.stringify({
-            generated_at: new Date().toISOString(),
-            patterns: activeSignals,
-          }));
-        } catch (err) {
-          process.stderr.write(`greymatter session-start: signal sidecar: ${err.message}\n`);
-        }
       } finally {
         memDb.close();
       }
@@ -177,7 +161,12 @@ function run(options = {}) {
   // 5. Regenerate greymatter-tools.md from tool-index.md (hash-gated inside the generator).
   try {
     const { generate } = require('../scripts/generate-tools-rules');
-    generate({ pluginRoot: PLUGIN_ROOT, dataDir, config });
+    generate({
+      pluginRoot: PLUGIN_ROOT,
+      dataDir,
+      config,
+      outputPath: path.join(rulesDir, 'greymatter-tools.md'),
+    });
   } catch (err) {
     process.stderr.write(`greymatter session-start: tools-rules regen: ${err.message}\n`);
   }
@@ -186,7 +175,7 @@ function run(options = {}) {
   try {
     if (fs.existsSync(path.join(dataDir, 'memory.db'))) {
       const { cmdGenerate } = require('../scripts/signals');
-      cmdGenerate(dataDir, config);
+      cmdGenerate(dataDir, config, rulesDir);
     } else if (!fs.existsSync(signalsDest)) {
       generateEmptySignals(signalsDest);
     }

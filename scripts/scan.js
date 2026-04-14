@@ -452,4 +452,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { scanProject, discoverProjects };
+module.exports = { scanProject, discoverProjects, seedAliases };

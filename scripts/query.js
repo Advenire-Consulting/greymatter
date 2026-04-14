@@ -126,6 +126,7 @@ function main() {
 
   if (!command) {
     process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve> [args]\n');
+    process.stderr.write('Common flags: --project <name>  --db <path to graph.db>  --memory-db <path to memory.db> (for --resolve)\n');
     process.exit(1);
   }
 
