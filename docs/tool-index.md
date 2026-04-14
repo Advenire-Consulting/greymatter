@@ -88,16 +88,21 @@ Verbatim conversation recall — reasoning, rejected alternatives, the actual ba
 
 Terms within quotes are comma-separated OR. Separate arguments are additive clusters.
 
-### Read Window
+### Read Window — granularity ladder
 
-    node $PLUGIN_ROOT/scripts/read-window.js <session> <seq> [--digest|--decision N|--focus L-L]
+    node $PLUGIN_ROOT/scripts/read-window.js <session> <seq> [--digest|--decision N|--focus L-L|--full]
 
-| Flag | What it does |
-|------|-------------|
-| `--digest` | Database-only summary (~200 tokens) |
-| `--decision N` | Scoped read of decision N (~500-1K tokens) |
-| `--focus <start>-<end>` | Compact read of a line range (~6K tokens) |
-| `--full` | Full verbatim text (variable) |
+Escalate only when the tier below is insufficient. Each step pays more tokens
+for more fidelity — start cheap, stop as soon as you have what you need.
+
+1. `--digest` (~200 tokens) — DB-only summary: decision list + file refs. Use
+   to confirm you have the right session before reading any verbatim text.
+2. `--decision N` (~500-1K tokens) — one specific decision with surrounding
+   reasoning. Use when the digest points at a clear target.
+3. `--focus <start>-<end>` (~6K tokens) — compact verbatim of a line range.
+   Use when the decision view is too narrow or you need the back-and-forth.
+4. `--full` (variable, can be large) — raw verbatim. Last resort; only when
+   focused reads keep missing the piece you need.
 
 <!-- endregion -->
 
@@ -143,6 +148,23 @@ each write.
 | "Where is this string/pattern used?" | `grep.js <pattern>` |
 | "How much code uses pattern A vs B?" | `classify.js --inline "A=..." "B=..."` |
 | "What did we decide about X?" | `search.js` + `read-window.js` |
+
+## Combined Recipes
+
+The single-tool table above answers narrow questions. Real investigations
+combine tools. The code graph tracks imports; it does NOT track textual
+contracts — slash commands shelling out by flag name, README examples,
+spec references, plan docs. Those are caught by `grep.js`. Treat them as
+first-class dependents.
+
+| Scenario | Sequence |
+|----------|----------|
+| "Can I safely wipe or rename this file?" | `--blast-radius <file>` (code consumers) THEN `grep.js <filename>` (textual contracts in commands/, README, plans). Missing the second step misses silent tripwires. |
+| "Where is this method actually called?" | `grep.js <methodName>` — `--trace` is thin on method call-sites; it shows definitions and file-level edges, not every call expression. Use `--trace` to locate the definition, `grep.js` to enumerate call sites. |
+| "Recover a past decision" | Ladder: `search.js` → `--digest` (~200 tok) → `--decision N` (~500-1K) → `--focus L-L` (~6K) → `--full`. Escalate only when the tier below is insufficient. |
+| "Audit a migration's progress" | `classify.js --inline "old=regex1" "new=regex2"` — percentage split plus direction tags ([client]/[server]/[config]/[reference]). |
+| "Orient in a project you haven't touched this session" | `--map <project>` first. Read individual files only after the map points you at what matters. |
+| "Understand the full blast radius of a load-bearing script" | `--blast-radius` + `--flow` + `grep.js <filename>` together. The code graph shows wiring; grep reveals the markdown/command/README contracts the graph doesn't track. |
 
 ## When Standard Tools Are Shorter
 

@@ -1,5 +1,17 @@
 {
-  "marketplace": "greymatter-local",
-  "homepage": "",
-  "repository": ""
+  "name": "greymatter-local",
+  "owner": {
+    "name": "Advenire Consulting"
+  },
+  "plugins": [
+    {
+      "name": "greymatter",
+      "description": "Unified code + documentation knowledge graph with conversation recall, behavioral signals, and safety hooks",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "Advenire Consulting"
+      }
+    }
+  ]
 }
