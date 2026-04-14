@@ -32,7 +32,7 @@ describe('dopamine-helper.run', () => {
 
   beforeEach(() => {
     dataDir = mkTmpDir('gm-dopa-');
-    // cmdGenerate writes ~/.claude/rules/signals.md; point HOME at tmp.
+    // cmdGenerate writes ~/.claude/rules/greymatter-signals.md; point HOME at tmp.
     realHome = process.env.HOME;
     fakeHome = mkTmpDir('gm-dopa-home-');
     process.env.HOME = fakeHome;

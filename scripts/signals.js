@@ -25,7 +25,7 @@ function getThreshold(config) {
     : 75;
 }
 
-// --generate: regenerate signals.md. Defaults to ~/.claude/rules/signals.md;
+// --generate: regenerate greymatter-signals.md. Defaults to ~/.claude/rules/greymatter-signals.md;
 // callers can override via rulesDir (used by session-start for test injection).
 function cmdGenerate(dataDir, config, rulesDir) {
   const db = openMemoryDb(dataDir);
@@ -34,14 +34,14 @@ function cmdGenerate(dataDir, config, rulesDir) {
   try {
     const md = queries.generateSignalsMd(threshold);
     const destDir = rulesDir || path.join(os.homedir(), '.claude', 'rules');
-    const signalsPath = path.join(destDir, 'signals.md');
+    const signalsPath = path.join(destDir, 'greymatter-signals.md');
     fs.mkdirSync(path.dirname(signalsPath), { recursive: true });
     fs.writeFileSync(signalsPath, md, { mode: 0o644 });
     // Count active signals/forces above threshold
     const signals = queries.getActiveSignals('passive', threshold);
     const allSignals = queries.getAllSignals().filter(s => !s.archived && s.weight >= threshold);
     const forces = queries.getActiveForces(threshold);
-    console.log(`Generated signals.md (${allSignals.length} signals, ${forces.length} forces)`);
+    console.log(`Generated greymatter-signals.md (${allSignals.length} signals, ${forces.length} forces)`);
   } finally {
     db.close();
   }

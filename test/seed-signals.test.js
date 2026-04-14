@@ -22,7 +22,7 @@ describe('seed-signals', () => {
 
   beforeEach(() => {
     dataDir = mkTmpDataDir();
-    // cmdGenerate writes signals.md to ~/.claude/rules/. Point HOME at the test tmp dir
+    // cmdGenerate writes greymatter-signals.md to ~/.claude/rules/. Point HOME at the test tmp dir
     // so tests don't clobber the user's real rules file.
     realHome = process.env.HOME;
     const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gm-seed-home-'));
@@ -77,13 +77,13 @@ describe('seed-signals', () => {
     }
   });
 
-  it('seedAndRegenerate writes ~/.claude/rules/signals.md (non-empty)', () => {
+  it('seedAndRegenerate writes ~/.claude/rules/greymatter-signals.md (non-empty)', () => {
     const result = seedAndRegenerate(dataDir, { quiet: true });
     assert.equal(result.seeded, true);
 
-    const signalsMd = path.join(process.env.HOME, '.claude', 'rules', 'signals.md');
-    assert.ok(fs.existsSync(signalsMd), 'signals.md must exist after seed');
+    const signalsMd = path.join(process.env.HOME, '.claude', 'rules', 'greymatter-signals.md');
+    assert.ok(fs.existsSync(signalsMd), 'greymatter-signals.md must exist after seed');
     const content = fs.readFileSync(signalsMd, 'utf-8');
-    assert.ok(content.length > 50, 'signals.md should contain rendered rules, not just a placeholder');
+    assert.ok(content.length > 50, 'greymatter-signals.md should contain rendered rules, not just a placeholder');
   });
 });

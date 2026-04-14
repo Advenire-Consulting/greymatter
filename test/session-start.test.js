@@ -76,13 +76,13 @@ describe('SessionStart', () => {
     assert.ok(!content.includes('$PLUGIN_ROOT'), '$PLUGIN_ROOT placeholders should be resolved');
   });
 
-  it('generates empty signals.md when missing', () => {
+  it('generates empty greymatter-signals.md when missing', () => {
     const { run } = require('../hooks/session-start');
     run({ dataDir, rulesDir });
-    const signalsMd = path.join(rulesDir, 'signals.md');
-    assert.ok(fs.existsSync(signalsMd), 'signals.md should be generated');
+    const signalsMd = path.join(rulesDir, 'greymatter-signals.md');
+    assert.ok(fs.existsSync(signalsMd), 'greymatter-signals.md should be generated');
     const content = fs.readFileSync(signalsMd, 'utf-8');
-    assert.ok(content.includes('Behavioral Signals'), 'signals.md should have a heading');
+    assert.ok(content.includes('Behavioral Signals'), 'greymatter-signals.md should have a heading');
   });
 
   it('outputs project list line', () => {

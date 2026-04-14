@@ -3,7 +3,7 @@
 
 // Last-mile validator + persister for /dopamine. The slash command drives the
 // conversation; this helper validates the collected fields and inserts the
-// signal via MemoryDB, then regenerates signals.md so the new rule is live.
+// signal via MemoryDB, then regenerates greymatter-signals.md so the new rule is live.
 
 const path = require('path');
 const os = require('os');
@@ -81,7 +81,7 @@ function run(opts, { dataDir, skipGenerate } = {}) {
     db.close();
   }
 
-  // Regenerate signals.md so the new rule takes effect next session.
+  // Regenerate greymatter-signals.md so the new rule takes effect next session.
   if (!skipGenerate) {
     const config = loadConfig(dir);
     cmdGenerate(dir, config);

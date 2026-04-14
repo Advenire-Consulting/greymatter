@@ -25,7 +25,7 @@ Flag a relational dynamic — reinforce an existing force or name a new one. Str
        --description "<description>"
      ```
 
-5. **Regenerate signals.md** (auto-runs after add/update — no separate step needed).
+5. **Regenerate greymatter-signals.md** (auto-runs after add/update — no separate step needed).
 
 6. **Confirm** with the user: "Force saved. Forces above threshold load into context at session start."
 
@@ -34,5 +34,5 @@ Flag a relational dynamic — reinforce an existing force or name a new one. Str
 - Forces are relational dynamics, not behavioral rules — they describe how to engage, not what to avoid
 - Keep names short and memorable: "Second seat", "Engage, don't validate", "Refiner, not generator"
 - Descriptions can be longer — they explain the principle in full
-- Forces above threshold appear in the "Relational Forces" section of signals.md
+- Forces above threshold appear in the "Relational Forces" section of greymatter-signals.md
 - `$PLUGIN_ROOT` resolves to the greymatter plugin directory at session start

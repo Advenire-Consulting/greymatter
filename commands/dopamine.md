@@ -27,13 +27,13 @@ Flag a behavioral moment — positive (nucleus accumbens) or negative (amygdala)
      --description "<description>"
    ```
 
-7. **Regenerate signals.md** (auto-runs after add — no separate step needed).
+7. **Regenerate greymatter-signals.md** (auto-runs after add — no separate step needed).
 
 8. **Confirm** with the user: "Signal saved. Active signals above threshold will load into your next session context."
 
 ## Notes
 
-- Keep labels short and actionable — they appear inline in signals.md
+- Keep labels short and actionable — they appear inline in greymatter-signals.md
 - If the user describes multiple related incidents, consider whether they're one signal or several
 - If a similar signal already exists (check with `node scripts/signals.js --review`), consider updating its weight instead of adding a duplicate
 - `$PLUGIN_ROOT` resolves to the greymatter plugin directory at session start

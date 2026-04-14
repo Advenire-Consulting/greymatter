@@ -109,8 +109,8 @@ Terms within quotes are comma-separated OR. Separate arguments are additive clus
 Review all active signals grouped by type, sorted by weight. Shows count, estimated
 token cost, and flags overlapping or contradictory signals.
 
-Signals are written via `/dopamine` and `/oxytocin` commands. The `signals.md` rules
-file at `~/.claude/rules/signals.md` is regenerated automatically after
+Signals are written via `/dopamine` and `/oxytocin` commands. The `greymatter-signals.md` rules
+file at `~/.claude/rules/greymatter-signals.md` is regenerated automatically after
 each write.
 
 <!-- endregion -->

@@ -70,7 +70,7 @@ The **extractor registry** (`lib/extractor-registry.js`) dispatches file parsing
   tmp/
 ~/.claude/rules/
   greymatter-tools.md   (generated)
-  signals.md            (generated)
+  greymatter-signals.md (generated)
 ```
 
 ## Authoring extractors

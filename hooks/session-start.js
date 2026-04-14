@@ -96,7 +96,7 @@ function run(options = {}) {
   const rulesDir = options.rulesDir || SHARED_RULES_DIR;
   const tmpDir = path.join(dataDir, 'tmp');
   const dbPath = path.join(dataDir, 'graph.db');
-  const signalsDest = path.join(rulesDir, 'signals.md');
+  const signalsDest = path.join(rulesDir, 'greymatter-signals.md');
 
   // 1. Load config — creates config.json on first run, returns merged config
   const config = loadConfig(dataDir);
@@ -171,7 +171,7 @@ function run(options = {}) {
     process.stderr.write(`greymatter session-start: tools-rules regen: ${err.message}\n`);
   }
 
-  // 6. Regenerate signals.md from memory.db if possible; fall back to empty placeholder.
+  // 6. Regenerate greymatter-signals.md from memory.db if possible; fall back to empty placeholder.
   try {
     if (fs.existsSync(path.join(dataDir, 'memory.db'))) {
       const { cmdGenerate } = require('../scripts/signals');
