@@ -9,6 +9,7 @@ const { GraphDB } = require('../lib/graph-db');
 const { GraphQueries } = require('../lib/graph-queries');
 const { MemoryDB } = require('../lib/memory-db');
 const { scanForSessions, ingestSession } = require('../lib/ingest');
+const { buildProjectContext } = require('../lib/reorientation');
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const TOOL_INDEX_SRC = path.join(PLUGIN_ROOT, 'docs', 'tool-index.md');
@@ -186,7 +187,19 @@ function run(options = {}) {
     }
   }
 
-  // 8. Output project list from graph.db
+  // 7. Build per-project reorientation context from memory.db → graph.db
+  try {
+    if (fs.existsSync(memoryDbPath) && fs.existsSync(dbPath)) {
+      const result = buildProjectContext(memoryDbPath, dbPath);
+      if (result.projectCount > 0) {
+        process.stderr.write(`greymatter: Reorientation context built for ${result.projectCount} projects\n`);
+      }
+    }
+  } catch (err) {
+    process.stderr.write(`greymatter session-start: reorientation: ${err.message}\n`);
+  }
+
+  // 9. Output project list from graph.db
   let projects = [];
   if (fs.existsSync(dbPath)) {
     let db;

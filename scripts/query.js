@@ -7,6 +7,7 @@ const { GraphDB } = require('../lib/graph-db');
 const { GraphQueries } = require('../lib/graph-queries');
 const { MemoryDB } = require('../lib/memory-db');
 const { MemoryQueries } = require('../lib/memory-queries');
+const { getProjectContext, listProjectContexts } = require('../lib/reorientation');
 
 const DEFAULT_DB = path.join(os.homedir(), '.claude', 'greymatter', 'graph.db');
 const DEFAULT_MEMORY_DB = path.join(os.homedir(), '.claude', 'greymatter', 'memory.db');
@@ -102,6 +103,55 @@ function formatSchema(nodes) {
   return lines.join('\n');
 }
 
+function formatReorient(entries, project) {
+  if (!entries || entries.length === 0) {
+    return `(no recent sessions for "${project}")`;
+  }
+  const lines = [`Recent sessions for ${project}:\n`];
+  for (const entry of entries) {
+    const shortId = entry.session_id ? entry.session_id.substring(0, 8) : '?';
+    const date = entry.date || 'unknown';
+    let dateStr = date;
+    try {
+      const d = new Date(date + 'T00:00:00Z');
+      dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { /* keep raw date */ }
+
+    const decisions = (entry.decisions || []).join(', ');
+    const rawFiles = entry.files || [];
+    const basenameCounts = new Map();
+    for (const f of rawFiles) {
+      const b = f.split('/').pop();
+      basenameCounts.set(b, (basenameCounts.get(b) || 0) + 1);
+    }
+    const files = rawFiles.map(f => {
+      const parts = f.split('/');
+      const base = parts[parts.length - 1];
+      if (basenameCounts.get(base) > 1 && parts.length >= 2) {
+        return parts[parts.length - 2] + '/' + base;
+      }
+      return base;
+    });
+
+    lines.push(`  ${dateStr} [${shortId}] — ${decisions || '(no decisions recorded)'}`);
+    if (files.length > 0) {
+      lines.push(`    Files: ${files.join(', ')}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+}
+
+function formatReorientList(contexts) {
+  if (!contexts || contexts.length === 0) return '(no project context available)';
+  const lines = ['Projects with session context:\n'];
+  for (const c of contexts) {
+    const dateStr = c.lastDate || 'unknown';
+    lines.push(`  ${c.project}  (${c.sessionCount} sessions, last: ${dateStr})`);
+  }
+  return lines.join('\n');
+}
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 function flag(args, name) {
@@ -125,7 +175,7 @@ function main() {
   const projectFlag = flag(args, '--project');
 
   if (!command) {
-    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve> [args]\n');
+    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve|--reorient> [args]\n');
     process.stderr.write('Common flags: --project <name>  --db <path to graph.db>  --memory-db <path to memory.db> (for --resolve)\n');
     process.exit(1);
   }
@@ -284,6 +334,16 @@ function main() {
       const projects = queries.listProjects();
       process.stdout.write(projects.join('\n') + '\n');
 
+    } else if (command === '--reorient') {
+      const project = positional(args, '--reorient') || projectFlag;
+      if (project) {
+        const entries = getProjectContext(dbPath, project);
+        process.stdout.write(formatReorient(entries, project) + '\n');
+      } else {
+        const contexts = listProjectContexts(dbPath);
+        process.stdout.write(formatReorientList(contexts) + '\n');
+      }
+
     } else {
       process.stderr.write(`Unknown command: ${command}\n`);
       process.exit(1);
@@ -295,4 +355,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema };
+module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList };

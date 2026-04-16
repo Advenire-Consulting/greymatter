@@ -15,6 +15,7 @@ from indexed data.
 
 | Command | What it does |
 |---------|-------------|
+| `--reorient [project]` | **Check first (alongside `--map`)** — recent sessions, decision terms, and files touched per project. No arg: list all projects with session context. |
 | `--map <project> [path]` | **Check first** — project directory map showing what each file does |
 | `--find <identifier>` | Code identifiers across all projects with line numbers |
 | `--structure <file> --project <p>` | Function/class/interface/type definitions with line numbers |
@@ -27,8 +28,9 @@ from indexed data.
 | `--list-projects` | Browse all known projects |
 
 **Token-saving rule:** When the user asks you to work on a project you haven't touched
-this session, run `--map <project>` first. Only read individual files after the map
-tells you which ones matter.
+this session, run `--reorient <project>` for recent activity (sessions, decisions, files
+touched) and `--map <project>` for current structure. Only read individual files after
+those two orientation moves tell you which ones matter.
 
 ## Scan
 
@@ -136,6 +138,7 @@ each write.
 
 | Question | Tool |
 |----------|------|
+| "What was recently done in this project?" / "Where did we leave off?" | `--reorient <project>` |
 | "What's in this project?" / "What does each file do?" | `--map <project>` |
 | "What calls this function?" | `--find <identifier>` |
 | "What does this file export?" | `--lookup <file>` |
@@ -163,7 +166,7 @@ first-class dependents.
 | "Where is this method actually called?" | `grep.js <methodName>` — `--trace` is thin on method call-sites; it shows definitions and file-level edges, not every call expression. Use `--trace` to locate the definition, `grep.js` to enumerate call sites. |
 | "Recover a past decision" | Ladder: `search.js` → `--digest` (~200 tok) → `--decision N` (~500-1K) → `--focus L-L` (~6K) → `--full`. Escalate only when the tier below is insufficient. |
 | "Audit a migration's progress" | `classify.js --inline "old=regex1" "new=regex2"` — percentage split plus direction tags ([client]/[server]/[config]/[reference]). |
-| "Orient in a project you haven't touched this session" | `--map <project>` first. Read individual files only after the map points you at what matters. |
+| "Orient in a project you haven't touched this session" | `--reorient <project>` (recent sessions + decisions) + `--map <project>` (current structure). The pair gives both the *why* of recent work and the *what* of current state in ~300 tokens. Read individual files only after those two. |
 | "Understand the full blast radius of a load-bearing script" | `--blast-radius` + `--flow` + `grep.js <filename>` together. The code graph shows wiring; grep reveals the markdown/command/README contracts the graph doesn't track. |
 
 ## When Standard Tools Are Shorter

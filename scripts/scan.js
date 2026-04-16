@@ -9,6 +9,7 @@ const { MemoryDB } = require('../lib/memory-db');
 const { ExtractorRegistry } = require('../lib/extractor-registry');
 const { SEED_EDGE_TYPES } = require('../lib/edge-types');
 const { loadConfig } = require('../lib/config');
+const { buildProjectContext } = require('../lib/reorientation');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.svelte-kit', 'dist', 'build', 'coverage']);
 const SKIP_EXTENSIONS = new Set(['.db', '.db-wal', '.db-shm']);
@@ -448,6 +449,18 @@ function main() {
 
   db.close();
   process.stdout.write(`\nTotal: ${totalScanned} scanned, ${totalSkipped} skipped, ${totalNodes} nodes, ${totalEdges} edges\n`);
+
+  // Build reorientation context from memory.db
+  // Runs after db.close() — buildProjectContext opens its own handles
+  try {
+    if (fs.existsSync(memDbPath)) {
+      process.stdout.write('\nBuilding reorientation context...\n');
+      const result = buildProjectContext(memDbPath, dbPath);
+      process.stdout.write(`  ${result.projectCount} projects, ${result.sessionCount} sessions\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`Warning: reorientation build failed: ${err.message}\n`);
+  }
 }
 
 if (require.main === module) main();

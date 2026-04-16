@@ -56,7 +56,7 @@ The **extractor registry** (`lib/extractor-registry.js`) dispatches file parsing
 
 **Hook lifecycle:**
 
-- `session-start` — tmp cleanup, conversation JSONL ingest, rules-file regeneration, first-run seeding.
+- `session-start` — tmp cleanup, conversation JSONL ingest, rules-file regeneration, first-run seeding, per-project reorientation context build (recent sessions and decisions, queryable via `query.js --reorient`).
 - `pre-tool-use` — hypothalamus policy (block/warn/ask for risky edits), lazy project orientation, pre-write signal triggers.
 - `post-tool-use` — incremental graph updates for edited files.
 
