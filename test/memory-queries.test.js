@@ -38,7 +38,7 @@ function seed(db) {
     { seq: 0, summary: 'Refactor scanner', terms: 'scanner,refactor', status: 'active' },
   ]);
 
-  db.insertAlias('brain', 'thebrain', 'lib/brain.js', 'seed');
+  db.insertAlias('api', 'api-gateway', 'lib/api.js', 'seed');
   db.insertAlias('alpha', 'proj-alpha', null, 'seed');
   db.insertAlias('beta-lib', 'proj-beta', 'lib/beta.js', 'seed');
 
@@ -119,10 +119,10 @@ describe('MemoryQueries', () => {
 
   it('resolveAliases returns project + file rows for known alias', () => {
     seed(db);
-    const rows = mq.resolveAliases('brain');
+    const rows = mq.resolveAliases('api');
     assert.ok(rows.length > 0);
-    assert.equal(rows[0].project, 'thebrain');
-    assert.equal(rows[0].file, 'lib/brain.js');
+    assert.equal(rows[0].project, 'api-gateway');
+    assert.equal(rows[0].file, 'lib/api.js');
   });
 
   it('resolveAliases returns empty array for unknown alias', () => {

@@ -76,9 +76,9 @@ describe('MemoryDB', () => {
   });
 
   it('insertAlias is idempotent', () => {
-    db.insertAlias('brain', 'thebrain', null, 'seed');
-    db.insertAlias('brain', 'thebrain', null, 'seed');
-    const count = db.db.prepare("SELECT COUNT(*) as c FROM aliases WHERE alias = 'brain'").get().c;
+    db.insertAlias('api', 'api-gateway', null, 'seed');
+    db.insertAlias('api', 'api-gateway', null, 'seed');
+    const count = db.db.prepare("SELECT COUNT(*) as c FROM aliases WHERE alias = 'api'").get().c;
     assert.equal(count, 1);
   });
 });

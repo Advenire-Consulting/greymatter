@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 // spec-check — cross-check specs and plans in one or more folders for collisions,
 // AND extract chunk assignments for Sonnet handoffs from a plan markdown file.
-//
-// Copied from thebrain-package with require paths updated to absolute references.
 
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const path = require('path');
 const os = require('os');
 
-const SPEC_CHECK_LIB = '/home/sonderbread/websites/thebrain-package/hippocampus/lib/spec-check';
+const SPEC_CHECK_LIB = path.join(__dirname, '..', 'lib', 'spec-check');
 
 const { walkSpecDir } = require(path.join(SPEC_CHECK_LIB, 'walker.js'));
 const { parseFrontmatter } = require(path.join(SPEC_CHECK_LIB, 'frontmatter-parser.js'));

@@ -10,7 +10,7 @@
     "better-sqlite3": "^12.6.2"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js lib/spec-check/*.test.js",
     "scan": "node scripts/scan.js"
   }
 }
