@@ -7,7 +7,7 @@ const { GraphDB } = require('../lib/graph-db');
 const { GraphQueries } = require('../lib/graph-queries');
 const { MemoryDB } = require('../lib/memory-db');
 const { MemoryQueries } = require('../lib/memory-queries');
-const { getProjectContext, listProjectContexts } = require('../lib/reorientation');
+const { getProjectContext, listProjectContexts, getRecentSessions } = require('../lib/reorientation');
 
 const DEFAULT_DB = path.join(os.homedir(), '.claude', 'greymatter', 'graph.db');
 const DEFAULT_MEMORY_DB = path.join(os.homedir(), '.claude', 'greymatter', 'memory.db');
@@ -142,6 +142,43 @@ function formatReorient(entries, project) {
   return lines.join('\n').trimEnd();
 }
 
+function formatRecent(entries) {
+  if (!entries || entries.length === 0) return '(no recent sessions)';
+  const lines = ['Recent sessions:\n'];
+  for (const entry of entries) {
+    const shortId = entry.session_id ? entry.session_id.substring(0, 8) : '?';
+    const date = entry.date || 'unknown';
+    let dateStr = date;
+    try {
+      const d = new Date(date + 'T00:00:00Z');
+      dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { /* keep raw date */ }
+    let timeStr = '';
+    if (entry.start_time) {
+      const m = entry.start_time.match(/T(\d{2}:\d{2})/);
+      if (m) timeStr = ' ' + m[1];
+    }
+    const projectsStr = (entry.projects && entry.projects.length > 0)
+      ? entry.projects.join(', ')
+      : '(no projects touched)';
+    const decisionsStr = (entry.decisions || []).join(', ');
+
+    lines.push(`  ${dateStr}${timeStr} [${shortId}]  ${projectsStr}`);
+    if (decisionsStr) lines.push(`    Terms: ${decisionsStr}`);
+
+    if (entry.files && entry.files.length > 0) {
+      const multiProject = new Set(entry.files.map(f => f.project)).size > 1;
+      const fileStrs = entry.files.map(f => {
+        const base = f.path.split('/').pop();
+        return multiProject ? `${f.project}/${base}` : base;
+      });
+      lines.push(`    Files: ${fileStrs.join(', ')}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+}
+
 function formatReorientList(contexts) {
   if (!contexts || contexts.length === 0) return '(no project context available)';
   const lines = ['Projects with session context:\n'];
@@ -175,7 +212,7 @@ function main() {
   const projectFlag = flag(args, '--project');
 
   if (!command) {
-    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve|--reorient> [args]\n');
+    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve|--reorient|--recent> [args]\n');
     process.stderr.write('Common flags: --project <name>  --db <path to graph.db>  --memory-db <path to memory.db> (for --resolve)\n');
     process.exit(1);
   }
@@ -344,6 +381,12 @@ function main() {
         process.stdout.write(formatReorientList(contexts) + '\n');
       }
 
+    } else if (command === '--recent') {
+      const n = parseInt(positional(args, '--recent') || '2', 10) || 2;
+      const memDbPath = flag(args, '--memory-db') || DEFAULT_MEMORY_DB;
+      const entries = getRecentSessions(memDbPath, dbPath, n);
+      process.stdout.write(formatRecent(entries) + '\n');
+
     } else {
       process.stderr.write(`Unknown command: ${command}\n`);
       process.exit(1);
@@ -355,4 +398,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList };
+module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList, formatRecent };

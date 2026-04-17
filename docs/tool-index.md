@@ -16,6 +16,7 @@ from indexed data.
 | Command | What it does |
 |---------|-------------|
 | `--reorient [project]` | **Check first (alongside `--map`)** — recent sessions, decision terms, and files touched per project. No arg: list all projects with session context. |
+| `--recent [N]` | Last N sessions globally (default 2), ordered by start time. Use when the user references conversations by count — "last session", "the session before that", "a couple sessions ago" — rather than by project. Cross-project sessions listed once with every project tagged. |
 | `--map <project> [path]` | **Check first** — project directory map showing what each file does |
 | `--find <identifier>` | Code identifiers across all projects with line numbers |
 | `--structure <file> --project <p>` | Function/class/interface/type definitions with line numbers |
@@ -143,7 +144,8 @@ By default, `--chunk-content` and `--dispatch` emit just the semantic sections �
 
 | Question | Tool |
 |----------|------|
-| "What was recently done in this project?" / "Where did we leave off?" | `--reorient <project>` |
+| "Last session?" / "a couple sessions ago?" / "the session before that?" | `--recent [N]` |
+| "What was recently done in <project>?" / "Where did we leave off on <project>?" | `--reorient <project>` |
 | "What's in this project?" / "What does each file do?" | `--map <project>` |
 | "What calls this function?" | `--find <identifier>` |
 | "What does this file export?" | `--lookup <file>` |

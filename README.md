@@ -18,6 +18,8 @@ greymatter is the successor to [thebrain](https://github.com/Advenire-Consulting
 
 **Project reorientation.** When a session touches a project it hasn't seen in a while, `--reorient <project>` returns the recent session history, decisions made, and files touched — usually under 300 tokens of context you would otherwise re-acquire by reading 10+ files.
 
+**Project-ambiguous recall.** When you reference conversations by count rather than by project — "last session", "a couple sessions ago", "the session before that" — `--recent [N]` returns the N most recent sessions across all projects, ordered by start time, with each session tagged with every project it touched. Cross-project sessions appear once with all projects listed, not once per project.
+
 **Local-only data.** Everything lives in SQLite under `~/.claude/greymatter/`. Nothing syncs externally, nothing leaves your machine.
 
 **Single runtime dependency.** Just `better-sqlite3`. No language servers, no external services, no API keys.

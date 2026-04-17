@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const Database = require('better-sqlite3');
-const { buildProjectContext, getProjectContext, listProjectContexts } = require('../lib/reorientation');
+const { buildProjectContext, getProjectContext, listProjectContexts, getRecentSessions } = require('../lib/reorientation');
 
 describe('reorientation', () => {
   let tmpDir, graphDbPath, memoryDbPath;
@@ -182,5 +182,41 @@ describe('reorientation', () => {
     buildProjectContext(memoryDbPath, graphDbPath);
     const second = getProjectContext(graphDbPath, 'my-project');
     assert.deepEqual(first, second);
+  });
+
+  describe('getRecentSessions', () => {
+    it('returns N most recent sessions globally, sorted by start_time desc', () => {
+      const sessions = getRecentSessions(memoryDbPath, graphDbPath, 2);
+      assert.equal(sessions.length, 2);
+      assert.equal(sessions[0].session_id, 'sess-1');
+      assert.equal(sessions[1].session_id, 'sess-2');
+    });
+
+    it('tags each session with every project it touched', () => {
+      const sessions = getRecentSessions(memoryDbPath, graphDbPath, 3);
+      const sess2 = sessions.find(s => s.session_id === 'sess-2');
+      assert.ok(sess2, 'sess-2 should appear');
+      assert.deepEqual(sess2.projects, ['my-project', 'other-project']);
+    });
+
+    it('returns project-relative file paths grouped with their project tag', () => {
+      const sessions = getRecentSessions(memoryDbPath, graphDbPath, 1);
+      const sess1 = sessions[0];
+      assert.ok(sess1.files.length > 0);
+      for (const f of sess1.files) {
+        assert.equal(f.project, 'my-project');
+        assert.ok(!f.path.startsWith('/'), 'path should be project-relative');
+      }
+    });
+
+    it('surfaces top decision terms per session', () => {
+      const sessions = getRecentSessions(memoryDbPath, graphDbPath, 1);
+      assert.ok(sessions[0].decisions.includes('auth'));
+    });
+
+    it('defaults to 2 when limit is missing or invalid', () => {
+      assert.equal(getRecentSessions(memoryDbPath, graphDbPath).length, 2);
+      assert.equal(getRecentSessions(memoryDbPath, graphDbPath, 'not-a-number').length, 2);
+    });
   });
 });
