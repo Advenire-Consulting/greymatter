@@ -1,8 +1,29 @@
 {
   "name": "greymatter",
   "version": "0.1.0",
-  "description": "Unified code + documentation knowledge graph for Claude Code",
+  "description": "Code + conversation knowledge graph for Claude Code",
   "private": true,
+  "license": "GPL-3.0-only",
+  "author": {
+    "name": "Advenire Consulting",
+    "url": "https://advenire.consulting"
+  },
+  "homepage": "https://github.com/Advenire-Consulting/greymatter",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Advenire-Consulting/greymatter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Advenire-Consulting/greymatter/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-plugin",
+    "knowledge-graph",
+    "code-navigation",
+    "conversation-recall",
+    "sqlite"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

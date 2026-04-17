@@ -131,8 +131,13 @@ each write.
 | `--dir <path>` | Scan a folder recursively for specs/plans |
 | `--template spec\|plan` | Print a ready-to-fill frontmatter template |
 | `--list-chunks <plan>` | List chunks in a plan with line ranges |
-| `--chunk-content <plan> <n>` | Full Sonnet assignment for one chunk |
-| `--dispatch <plan>` | Write all chunk assignments to `chunks/` directory |
+| `--chunk-content <plan> <n>` | Extract a chunk assignment (plan header + prior observations + chunk body) |
+| `--dispatch <plan>` | Write every chunk's assignment to `<plan-dir>/chunks/` |
+
+By default, `--chunk-content` and `--dispatch` emit just the semantic sections — plan header, prior observations, chunk body — and `--dispatch` writes nothing outside the chunks directory. Two opt-ins exist for workflows that need more:
+
+- **Standing-rules preamble** — a workflow-rules block prepended to every chunk (don't commit, don't restart services, observations-file instructions). Enable via `spec_check.preamble: true` in `~/.claude/greymatter/config.json`, or pass `--preamble` on a single invocation. Pass `--no-preamble` to force it off when config has it on.
+- **External command-log append** — `--dispatch` can append one `Read <path> and execute it.` line per chunk to an external file (clipboard-window integration, etc.). Enable via `spec_check.command_log_path: "/abs/path"` in config, or pass `--command-log <path>`. Pass `--command-log=` (empty value) to disable for one call.
 
 ## What Answers What
 

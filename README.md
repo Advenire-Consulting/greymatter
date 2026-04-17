@@ -1,19 +1,59 @@
 # greymatter
 
-Unified code + documentation knowledge graph for Claude Code. Bundles code navigation, conversation recall, behavioral signals (dopamine/oxytocin flows), and safety hooks in one plugin. Data is stored locally in SQLite; nothing leaves your machine.
+Code + conversation knowledge graph for Claude Code. Indexes your codebase and past sessions into a local SQLite store, exposes structured queries Claude can call instead of greping, and keeps behavioral preferences that shape how Claude works with you. All data stays on your machine.
+
+greymatter is the successor to [thebrain](https://github.com/Advenire-Consulting/thebrain) — same goal, rebuilt around a single unified graph instead of separate regional databases. Smaller surface, faster lookups, modular extractor interface for adding new language support.
+
+## What it does
+
+**Code navigation without grep.** Scans your codebase and builds a structured graph of how files connect — imports, exports, routes, database references, function and class definitions. Queries like "what imports this file," "what's the blast radius of changing it," and "show the body of this function" return in one call instead of a grep-then-read chain. Works across every project in your workspace.
+
+**Blast radius that includes textual contracts.** Most code graphs stop at imports. They miss slash commands that shell out to scripts by path, READMEs quoting filenames, rules files pointing at specific modules, and plan docs that cite sources. greymatter pairs its structural blast radius with `grep.js` — a project-aware content search with surrounding context — so before you rename or delete a file, you see every reference to it, code or text. Paired sequences like `--blast-radius` + `grep.js <filename>` are documented in the Combined Recipes section of [`docs/tool-index.md`](docs/tool-index.md#combined-recipes).
+
+**Conversation recall across sessions.** Indexes your Claude Code conversation history — the JSONL files Claude already writes — into a searchable store. "What did we decide about the auth system?" returns the actual back-and-forth. A tiered read ladder (digest → decision → focus → full) lets Claude confirm it has the right session before committing to read the verbatim text.
+
+**Behavioral preferences that persist.** Flag moments that matter with `/dopamine` (lessons from what worked or what burned you) and `/oxytocin` (relational dynamics that shape collaboration). These compile into decision gates that load at session start, so Claude doesn't re-learn your preferences every time.
+
+**Safety hooks on edits and commands.** Before Claude writes a file or runs a shell command, policy hooks classify the target by sensitivity and blast radius and either warn, block, or ask for confirmation. Unparseable commands get flagged for manual review. Configurable per path.
+
+**Project reorientation.** When a session touches a project it hasn't seen in a while, `--reorient <project>` returns the recent session history, decisions made, and files touched — usually under 300 tokens of context you would otherwise re-acquire by reading 10+ files.
+
+**Local-only data.** Everything lives in SQLite under `~/.claude/greymatter/`. Nothing syncs externally, nothing leaves your machine.
+
+**Single runtime dependency.** Just `better-sqlite3`. No language servers, no external services, no API keys.
 
 ## Prerequisites
 
 - Node.js 18 or newer
-- better-sqlite3 (installed automatically as a plugin dependency)
+- Claude Code CLI
 
 ## Installation
 
+greymatter uses `better-sqlite3`, a native module that compiles against your Node version on install.
+
+### Clone (recommended)
+
 ```
-/plugin install greymatter
+git clone https://github.com/Advenire-Consulting/greymatter.git
+cd greymatter && npm install
+claude plugins marketplace add /absolute/path/to/greymatter
+claude plugins install greymatter@greymatter
 ```
 
-Local marketplace for now; a public marketplace entry will land when the plugin stabilizes.
+### Marketplace (direct from GitHub)
+
+```
+claude plugins marketplace add Advenire-Consulting/greymatter
+claude plugins install greymatter@greymatter
+```
+
+With the direct path, install the native dependency in the plugin cache before first use:
+
+```
+cd ~/.claude/plugins/cache/greymatter/greymatter/<version> && npm install
+```
+
+Run `ls ~/.claude/plugins/cache/greymatter/greymatter/` to see the installed version.
 
 ## First-run behavior
 
@@ -44,6 +84,38 @@ Run a monthly review to surface stale and overlapping signals:
 ```
 node scripts/signals.js --review
 ```
+
+## Spec & Plan tooling
+
+`scripts/spec-check.js` cross-checks spec/plan markdown docs for collisions and extracts chunk assignments from implementation plans. See [`docs/tool-index.md`](docs/tool-index.md#specplan-tools) for the full command table.
+
+```
+node scripts/spec-check.js --dir <path>                      # Scan for collisions
+node scripts/spec-check.js --template spec|plan              # Print frontmatter template
+node scripts/spec-check.js --list-chunks <plan>              # List chunks with line ranges
+node scripts/spec-check.js --chunk-content <plan> <n>        # Extract one chunk's assignment
+node scripts/spec-check.js --dispatch <plan>                 # Write every chunk to <plan-dir>/chunks/
+```
+
+By default, `--chunk-content` and `--dispatch` emit just the semantic sections — plan header, prior observations, chunk body — and `--dispatch` writes nothing outside the chunks directory. Two behaviors are available as opt-ins for workflows that need them:
+
+| Setting | Default | What it does |
+|---------|---------|-------------|
+| `spec_check.preamble` | `false` | When `true`, prepends a workflow-rules block (don't commit, don't restart services, observations-file instructions) to every chunk assignment. |
+| `spec_check.command_log_path` | `null` | When set to a path, `--dispatch` appends one `Read <path> and execute it.` line per chunk to that external file. |
+
+Enable in `~/.claude/greymatter/config.json`:
+
+```json
+{
+  "spec_check": {
+    "preamble": true,
+    "command_log_path": "/abs/path/to/command-log.txt"
+  }
+}
+```
+
+Per-invocation overrides: `--preamble` / `--no-preamble`, and `--command-log <path>` / `--command-log=` (empty value disables for one call).
 
 ## Architecture
 
@@ -76,3 +148,13 @@ The **extractor registry** (`lib/extractor-registry.js`) dispatches file parsing
 ## Authoring extractors
 
 See the extractor interface contract at the top of [`lib/extractor-registry.js`](lib/extractor-registry.js). New extractors are auto-discovered from `lib/extractors/` — register, export, and the registry picks them up.
+
+## License
+
+GPL-3.0-only. See [LICENSE](LICENSE) for the full text.
+
+---
+
+Built by [Advenire Consulting](https://advenire.consulting).
+
+Issues, feedback, or want to talk about what you're building with Claude Code? [Open an issue](https://github.com/Advenire-Consulting/greymatter/issues) or reach out at [advenire.consulting](https://advenire.consulting).

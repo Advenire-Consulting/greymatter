@@ -57,3 +57,14 @@ Safety policy applied before tool use. Each category accepts: `block` (refuse), 
 | Setting | Default | What it does | What you lose if changed |
 |---------|---------|--------------|--------------------------|
 | `tmp_cleanup_max_age_hours` | `24` | `~/.claude/greymatter/tmp/` entries older than this are deleted at session start. | Raising retains scratch files longer; lowering reclaims space faster. |
+
+## Spec Check
+
+`scripts/spec-check.js` has two behaviors inherited from the author's clod-executor workflow. Both are off by default; enable either independently.
+
+| Setting | Default | What it does | What you lose if changed |
+|---------|---------|--------------|--------------------------|
+| `spec_check.preamble` | `false` | When `true`, `--chunk-content` and `--dispatch` prepend a "Sonnet assignment" standing-rules block (do not commit, do not restart services, observations-file instructions) before the plan header. | Enabling adds ~30 lines of opinionated workflow rules to every chunk assignment. Leave `false` unless your executor is specifically trained on these instructions. |
+| `spec_check.command_log_path` | `null` | When set to a path, `--dispatch` appends one `Read <path> and execute it.` line per chunk to that file (creating parent dirs as needed). | Enabling writes to an external file on every dispatch. Leave `null` unless you have a clipboard/command-log integration watching that path. |
+
+CLI flags override this config per-invocation: `--preamble` / `--no-preamble` override `preamble`, and `--command-log <path>` / `--command-log=` override `command_log_path`.

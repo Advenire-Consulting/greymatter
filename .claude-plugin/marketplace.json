@@ -1,7 +1,9 @@
 {
-  "name": "greymatter-local",
+  "name": "greymatter",
+  "description": "Code + conversation knowledge graph for Claude Code",
   "owner": {
-    "name": "Advenire Consulting"
+    "name": "Advenire Consulting",
+    "url": "https://advenire.consulting"
   },
   "plugins": [
     {
@@ -10,7 +12,8 @@
       "version": "0.1.0",
       "source": "./",
       "author": {
-        "name": "Advenire Consulting"
+        "name": "Advenire Consulting",
+        "url": "https://advenire.consulting"
       }
     }
   ]

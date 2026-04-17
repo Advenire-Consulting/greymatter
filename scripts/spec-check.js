@@ -15,6 +15,7 @@ const { renderTemplate } = require(path.join(SPEC_CHECK_LIB, 'schema.js'));
 const { detectAll } = require(path.join(SPEC_CHECK_LIB, 'collision-detector.js'));
 const { renderReport } = require(path.join(SPEC_CHECK_LIB, 'report-formatter.js'));
 const { listChunks, assembleAssignment, computeDispatchPayloads } = require(path.join(SPEC_CHECK_LIB, 'chunk-extractor.js'));
+const { loadConfig } = require(path.join(__dirname, '..', 'lib', 'config.js'));
 
 // Parse argv into a structured options object.
 function parseArgs(argv) {
@@ -26,6 +27,8 @@ function parseArgs(argv) {
     chunkRange: null,       // { plan, n }
     chunkContent: null,     // { plan, n }
     dispatch: null,         // plan path
+    preamble: null,         // true | false | null (null = defer to config)
+    commandLogPath: undefined, // string | '' | undefined (undefined = defer to config, '' = disable)
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -36,6 +39,25 @@ function parseArgs(argv) {
     else if (a === '--chunk-range') { opts.chunkRange = { plan: argv[++i], n: parseInt(argv[++i], 10) }; }
     else if (a === '--chunk-content') { opts.chunkContent = { plan: argv[++i], n: parseInt(argv[++i], 10) }; }
     else if (a === '--dispatch') { opts.dispatch = argv[++i]; }
+    else if (a === '--preamble') {
+      if (opts.preamble === false) throw new Error('conflicting preamble flags');
+      opts.preamble = true;
+    }
+    else if (a === '--no-preamble') {
+      if (opts.preamble === true) throw new Error('conflicting preamble flags');
+      opts.preamble = false;
+    }
+    else if (a.startsWith('--command-log=')) {
+      opts.commandLogPath = a.slice('--command-log='.length);
+    }
+    else if (a === '--command-log') {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('--')) {
+        throw new Error('--command-log requires a path or use --command-log= to disable');
+      }
+      i++;
+      opts.commandLogPath = next;
+    }
     else if (a === '--help' || a === '-h') { opts.help = true; }
     else { throw new Error(`unknown argument: ${a}`); }
   }
@@ -53,9 +75,26 @@ Usage:
   spec-check.js --dir <path> --strict              Exit non-zero if headerless docs exist
   spec-check.js --list-chunks <plan>               List chunks in a plan with line ranges
   spec-check.js --chunk-range <plan> <n>           Print "L<start>-L<end>" for chunk n
-  spec-check.js --chunk-content <plan> <n>         Print full Sonnet assignment for chunk n
+  spec-check.js --chunk-content <plan> <n>         Print chunk assignment for chunk n
   spec-check.js --dispatch <plan>                  Write every chunk's assignment to <plan-dir>/chunks/
-                                                   and append read instructions to ~/claude/command-log.txt
+
+By default, --chunk-content and --dispatch emit just plan header + observations
++ chunk body, and --dispatch writes no external log. To opt into the standing-
+rules preamble and the command-log append, set spec_check in
+~/.claude/greymatter/config.json:
+
+  {
+    "spec_check": {
+      "preamble": true,
+      "command_log_path": "/abs/path/to/command-log.txt"
+    }
+  }
+
+Or override per-invocation:
+  --preamble                        Force preamble ON (overrides config)
+  --no-preamble                     Force preamble OFF (overrides config)
+  --command-log <path>              Force dispatch to append to <path>
+  --command-log=                    Force dispatch NOT to write any command log
 `);
 }
 
@@ -110,11 +149,15 @@ async function main(argv) {
       const planPath = path.resolve(opts.chunkContent.plan);
       const contents = await fs.readFile(planPath, 'utf8');
       const observations = readObservationsSync(planPath);
+      const config = loadConfig();
+      const specCheckConfig = config.spec_check || {};
+      const preamble = opts.preamble !== null ? opts.preamble : Boolean(specCheckConfig.preamble);
       const out = assembleAssignment({
         planPath,
         planContents: contents,
         chunkNumber: opts.chunkContent.n,
         observations,
+        preamble,
       });
       console.log(out);
       return 0;
@@ -126,7 +169,17 @@ async function main(argv) {
       const planPath = path.resolve(opts.dispatch);
       const contents = await fs.readFile(planPath, 'utf8');
       const observations = readObservationsSync(planPath);
-      const payloads = computeDispatchPayloads({ planPath, planContents: contents, observations });
+      const config = loadConfig();
+      const specCheckConfig = config.spec_check || {};
+      const preamble = opts.preamble !== null ? opts.preamble : Boolean(specCheckConfig.preamble);
+      let commandLogPath;
+      if (opts.commandLogPath !== undefined) {
+        commandLogPath = opts.commandLogPath === '' ? null : opts.commandLogPath;
+      } else {
+        commandLogPath = specCheckConfig.command_log_path || null;
+      }
+
+      const payloads = computeDispatchPayloads({ planPath, planContents: contents, observations, preamble });
       if (payloads.length === 0) {
         console.error(`spec-check: no chunks found in ${planPath}`);
         return 3;
@@ -138,16 +191,17 @@ async function main(argv) {
         fsSync.writeFileSync(p.filePath, p.content, 'utf8');
       }
 
-      const commandLogPath = path.join(os.homedir(), 'claude', 'command-log.txt');
-      fsSync.mkdirSync(path.dirname(commandLogPath), { recursive: true });
-      const logLines = payloads.map(p => p.readInstruction).join('\n') + '\n';
-      fsSync.appendFileSync(commandLogPath, logLines, 'utf8');
-
       console.log(`Wrote ${payloads.length} chunk${payloads.length === 1 ? '' : 's'} to ${chunksDir}/`);
       for (const p of payloads) {
         console.log(`  Chunk ${p.chunkNumber}: ${p.fileName}${p.chunkName ? ` — ${p.chunkName}` : ''}`);
       }
-      console.log(`Appended ${payloads.length} read instruction${payloads.length === 1 ? '' : 's'} to ${commandLogPath}`);
+
+      if (commandLogPath) {
+        fsSync.mkdirSync(path.dirname(commandLogPath), { recursive: true });
+        const logLines = payloads.map(p => p.readInstruction).join('\n') + '\n';
+        fsSync.appendFileSync(commandLogPath, logLines, 'utf8');
+        console.log(`Appended ${payloads.length} read instruction${payloads.length === 1 ? '' : 's'} to ${commandLogPath}`);
+      }
       return 0;
     } catch (err) { console.error(`spec-check: ${err.message}`); return 3; }
   }
