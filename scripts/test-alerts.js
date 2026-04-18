@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { loadConfig } = require('../lib/config');
+const { loadConfig, getConfigPath } = require('../lib/config');
 const { GraphDB } = require('../lib/graph-db');
 const { MemoryDB } = require('../lib/memory-db');
 const { ExtractorRegistry } = require('../lib/extractor-registry');
@@ -292,7 +292,12 @@ function cli(argv) {
   let targets;
   if (args.project) {
     if (!enabled.includes(args.project)) {
-      process.stderr.write(`greymatter test-alerts: --project ${args.project} is not in enabled_projects.\n`);
+      process.stderr.write(
+        `greymatter test-alerts: --project ${args.project} is not in enabled_projects.\n`
+        + `  Config: ${getConfigPath(dataDir)} -> test_alerts.enabled_projects\n`
+        + `  Current: ${JSON.stringify(enabled)}\n`
+        + `  To enable: add "${args.project}" to that array and rerun.\n`
+      );
       return 2;
     }
     targets = [args.project];
