@@ -90,4 +90,25 @@ describe('SessionStart', () => {
     run({ dataDir, rulesDir });
     assert.ok(captured.includes('Projects:'), 'stdout should contain Projects: line');
   });
+
+  it('removes the pre-Phase-2 nested rules dir if present', () => {
+    const legacyDir = path.join(dataDir, 'rules');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, 'greymatter-tools.md'), 'stale');
+    fs.writeFileSync(path.join(legacyDir, 'greymatter-signals.md'), 'stale');
+
+    const { run } = require('../hooks/session-start');
+    run({ dataDir, rulesDir });
+
+    assert.ok(!fs.existsSync(legacyDir), 'legacy rules/ dir should be removed');
+    // But the shared rulesDir must survive — it's where rules now live.
+    assert.ok(fs.existsSync(rulesDir), 'shared rulesDir should still exist');
+  });
+
+  it('legacy cleanup is a safe no-op when the dir never existed', () => {
+    const legacyDir = path.join(dataDir, 'rules');
+    assert.ok(!fs.existsSync(legacyDir), 'precondition: legacy dir should not exist');
+    const { run } = require('../hooks/session-start');
+    assert.doesNotThrow(() => run({ dataDir, rulesDir }));
+  });
 });

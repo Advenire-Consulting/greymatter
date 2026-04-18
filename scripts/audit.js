@@ -278,4 +278,14 @@ function main() {
   if (errors.length > 0) process.exit(1);
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = {
+  checkOrphanedNodes,
+  checkStaleDocumentaryEdges,
+  checkMissingEdgeTypeRegistrations,
+  checkOrphanedAnnotations,
+  checkFileHashMismatches,
+  checkOrphanedDocumentation,
+  formatItem,
+};
