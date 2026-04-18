@@ -261,4 +261,42 @@ function extract(content, filePath, project) {
   return { nodes, edges, edge_types: USED_EDGE_TYPES };
 }
 
-module.exports = { extensions: ['.js', '.mjs', '.cjs'], extract };
+const testPairs = {
+  isTestFile(relPath) {
+    return /\.test\.[mc]?js$|\.spec\.[mc]?js$/.test(relPath)
+      || /(^|\/)(test|tests|__tests__|spec)\//.test(relPath);
+  },
+
+  candidateTestPaths(sourceRelPath) {
+    const ext = path.extname(sourceRelPath);
+    const base = sourceRelPath.slice(0, -ext.length);
+    const dir = path.dirname(sourceRelPath);
+    const name = path.basename(base);
+    const candidates = [
+      `${base}.test${ext}`,
+      `${base}.spec${ext}`,
+      path.join(dir, '__tests__', `${name}.test${ext}`),
+      path.join(dir, '__tests__', `${name}.spec${ext}`),
+      path.join('test', sourceRelPath),
+      path.join('tests', sourceRelPath),
+      path.join('test', `${name}.test${ext}`),
+      path.join('tests', `${name}.test${ext}`),
+    ];
+    // Flattened-parent convention: lib/foo/bar.js -> test/foo-bar.test.js
+    // Common when projects keep a single flat test/ dir instead of mirroring structure.
+    const parent = dir === '.' ? '' : path.basename(dir);
+    if (parent) {
+      candidates.push(path.join('test', `${parent}-${name}.test${ext}`));
+      candidates.push(path.join('tests', `${parent}-${name}.test${ext}`));
+    }
+    return candidates;
+  },
+
+  parseAnnotations(content) {
+    const header = content.split('\n').slice(0, 20).join('\n');
+    const matches = [...header.matchAll(/\/\/[ \t]*@tests[ \t]+(\S+)/g)];
+    return matches.map(m => m[1]);
+  },
+};
+
+module.exports = { extensions: ['.js', '.mjs', '.cjs'], extract, testPairs };

@@ -1,5 +1,7 @@
 'use strict';
 
+// @tests extractors/typescript.js
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/typescript');
@@ -48,5 +50,31 @@ describe('TypeScript Extractor', () => {
     assert.ok(fn);
     const imports = result.edges.filter(e => e.type === 'imports');
     assert.ok(imports.length >= 1);
+  });
+
+  describe('testPairs.parseAnnotations', () => {
+    it('captures well-formed same-line annotations', () => {
+      const sources = extractor.testPairs.parseAnnotations(
+        "// @tests src/foo.ts\nimport { foo } from '../src/foo';\n"
+      );
+      assert.deepEqual(sources, ['src/foo.ts']);
+    });
+
+    it('does not capture across newlines for bare @tests', () => {
+      // Matches JS extractor's hardened regex: a bare "// @tests" followed by
+      // a newline must NOT silently grab the next non-whitespace token.
+      const sources = extractor.testPairs.parseAnnotations(
+        "// @tests\nimport { foo } from '../src/foo';\n"
+      );
+      assert.deepEqual(sources, []);
+    });
+
+    it('only scans the first 20 lines', () => {
+      const preamble = Array(25).fill('// header').join('\n');
+      const sources = extractor.testPairs.parseAnnotations(
+        `${preamble}\n// @tests src/late.ts\n`
+      );
+      assert.deepEqual(sources, []);
+    });
   });
 });

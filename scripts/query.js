@@ -368,8 +368,13 @@ function main() {
       process.stdout.write(formatSchema(schema) + '\n');
 
     } else if (command === '--list-projects') {
-      const projects = queries.listProjects();
-      process.stdout.write(projects.join('\n') + '\n');
+      const projects = queries.listProjectsWithRoots();
+      const nameWidth = projects.reduce((w, p) => Math.max(w, p.name.length), 0);
+      const lines = projects.map(p => {
+        const root = p.root_path || '(not recorded — rescan to register root)';
+        return p.name.padEnd(nameWidth) + '  →  ' + root;
+      });
+      process.stdout.write(lines.join('\n') + '\n');
 
     } else if (command === '--reorient') {
       const project = positional(args, '--reorient') || projectFlag;

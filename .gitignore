@@ -9,3 +9,4 @@ windows.json
 docs/superpowers/
 .claude/
 .DS_Store
+scripts/ingest-archive.js

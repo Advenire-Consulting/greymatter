@@ -1,5 +1,7 @@
 'use strict';
 
+// @tests extractors/markdown.js
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/markdown');

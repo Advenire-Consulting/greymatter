@@ -1,5 +1,7 @@
 'use strict';
 
+// @tests extractors/svelte.js
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/svelte');
@@ -45,5 +47,51 @@ describe('Svelte Extractor', () => {
     );
     const dispatches = result.edges.filter(e => e.type === 'dispatches');
     assert.ok(dispatches.some(e => e.target === 'select'));
+  });
+
+  describe('testPairs.isTestFile', () => {
+    it('matches .test.svelte and .spec.svelte', () => {
+      assert.equal(extractor.testPairs.isTestFile('Button.test.svelte'), true);
+      assert.equal(extractor.testPairs.isTestFile('Button.spec.svelte'), true);
+      assert.equal(extractor.testPairs.isTestFile('Button.svelte'), false);
+    });
+
+    it('matches test/ and __tests__/ directories', () => {
+      assert.equal(extractor.testPairs.isTestFile('test/Button.svelte'), true);
+      assert.equal(extractor.testPairs.isTestFile('src/__tests__/Button.svelte'), true);
+    });
+  });
+
+  describe('testPairs.candidateTestPaths', () => {
+    it('crosses extensions to TS/JS test files', () => {
+      const candidates = extractor.testPairs.candidateTestPaths('src/lib/Button.svelte');
+      assert.ok(candidates.includes('src/lib/Button.test.ts'));
+      assert.ok(candidates.includes('src/lib/Button.spec.ts'));
+      assert.ok(candidates.includes('src/lib/Button.test.js'));
+      assert.ok(candidates.includes('src/lib/Button.spec.js'));
+    });
+
+    it('includes __tests__ subdirectory and top-level test dirs', () => {
+      const candidates = extractor.testPairs.candidateTestPaths('src/lib/Button.svelte');
+      assert.ok(candidates.includes('src/lib/__tests__/Button.test.ts'));
+      assert.ok(candidates.includes('test/Button.test.ts'));
+      assert.ok(candidates.includes('tests/Button.test.ts'));
+    });
+  });
+
+  describe('testPairs.parseAnnotations', () => {
+    it('captures // @tests annotations from script block', () => {
+      const sources = extractor.testPairs.parseAnnotations(
+        "<script lang=\"ts\">\n  // @tests src/lib/Button.svelte\n  import Button from './Button.svelte';\n</script>\n"
+      );
+      assert.deepEqual(sources, ['src/lib/Button.svelte']);
+    });
+
+    it('does not capture across newlines for bare // @tests', () => {
+      const sources = extractor.testPairs.parseAnnotations(
+        "<script>\n  // @tests\n  import x from './x';\n</script>\n"
+      );
+      assert.deepEqual(sources, []);
+    });
   });
 });

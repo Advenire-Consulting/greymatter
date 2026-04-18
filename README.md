@@ -14,6 +14,8 @@ greymatter is the successor to [thebrain](https://github.com/Advenire-Consulting
 
 **Behavioral preferences that persist.** Flag moments that matter with `/dopamine` (lessons from what worked or what burned you) and `/oxytocin` (relational dynamics that shape collaboration). These compile into decision gates that load at session start, so Claude doesn't re-learn your preferences every time.
 
+**Test-map alerts.** Opt-in stale-test-pair detector. For each project you enable, greymatter cross-references recent source changes against their paired test files and flags source commits that didn't carry a matching test update (`stale_pair`) or source files that never had a test at all (`missing_test`). Pairing logic lives in each language extractor — JavaScript, TypeScript, Python, and Svelte ship with pairing enabled; adding another language is an extractor change, not a core change. The session-start hook runs an incremental scan per opted-in project; `scripts/test-alerts.js` handles mid-session re-runs and full-codebase audits; `/test-map` summarizes findings for the current project and can convert them into TodoWrite items.
+
 **Safety hooks on edits and commands.** Before Claude writes a file or runs a shell command, policy hooks classify the target by sensitivity and blast radius and either warn, block, or ask for confirmation. Unparseable commands get flagged for manual review. Configurable per path.
 
 **Project reorientation.** When a session touches a project it hasn't seen in a while, `--reorient <project>` returns the recent session history, decisions made, and files touched — usually under 300 tokens of context you would otherwise re-acquire by reading 10+ files.
@@ -74,10 +76,13 @@ Seeded N starter signals and M forces. Use /dopamine and /oxytocin to customize.
 
 Every setting, its default, and what you lose by disabling it lives in [`config/defaults.md`](config/defaults.md). At runtime, config is loaded from `~/.claude/greymatter/config.json` and deep-merged over the defaults — so you only need to override what you want to change.
 
+**Additive migration.** When a new default key ships (e.g., `test_alerts` added in April 2026), `loadConfig` detects that it's missing from your existing file and inserts it with the default value so it's visible and editable on disk. Your existing overrides are never modified and never removed. A one-time backup is written to `config.json.bak`, and a one-line stderr note names the keys that were added.
+
 ## Commands
 
 - `/dopamine` — flag a behavioral moment (positive or negative); guided flow adds a weighted lesson.
 - `/oxytocin` — flag a relational dynamic; guided flow reinforces an existing force or names a new one.
+- `/test-map` — run the test-map alert scan for the current project and summarize open findings (optionally converts them to TodoWrite items).
 
 ## Signal hygiene
 
@@ -86,6 +91,18 @@ Run a monthly review to surface stale and overlapping signals:
 ```
 node scripts/signals.js --review
 ```
+
+## Test-map alerts
+
+Opt-in stale-test-pair detector. Silent until you add a project name to `config.test_alerts.enabled_projects` — zero-cost when disabled. Once enabled, the session-start hook runs an incremental scan per project and only speaks up when findings change. Discover the exact strings to list with `node scripts/query.js --list-projects` (these are the names greymatter assigned at scan time, not paths). For mid-session runs after a pull:
+
+```
+node scripts/test-alerts.js --project <name>              # incremental (default)
+node scripts/test-alerts.js --audit --project <name>      # full-codebase sweep
+node scripts/test-alerts.js --audit                       # sweep every enabled project
+```
+
+Reports are written to `~/.claude/greymatter/testalerts/<project>.md` by default (path configurable via `test_alerts.alert_output_dir`). Pairing logic lives in each language extractor's `testPairs` block — JavaScript and TypeScript ship enabled; adding a new language is an extractor change, not a core change. Full settings reference in [`config/defaults.md`](config/defaults.md#test-alerts); flag table in [`docs/tool-index.md`](docs/tool-index.md#test-map-alerts).
 
 ## Spec & Plan tooling
 
@@ -130,7 +147,7 @@ The **extractor registry** (`lib/extractor-registry.js`) dispatches file parsing
 
 **Hook lifecycle:**
 
-- `session-start` — tmp cleanup, conversation JSONL ingest, rules-file regeneration, first-run seeding, per-project reorientation context build (recent sessions and decisions, queryable via `query.js --reorient`).
+- `session-start` — tmp cleanup, conversation JSONL ingest, rules-file regeneration, first-run seeding, per-project reorientation context build (recent sessions and decisions, queryable via `query.js --reorient`), incremental test-map alert scan for any project in `config.test_alerts.enabled_projects`.
 - `pre-tool-use` — hypothalamus policy (block/warn/ask for risky edits), lazy project orientation, pre-write signal triggers.
 - `post-tool-use` — incremental graph updates for edited files.
 
@@ -149,7 +166,7 @@ The **extractor registry** (`lib/extractor-registry.js`) dispatches file parsing
 
 ## Authoring extractors
 
-See the extractor interface contract at the top of [`lib/extractor-registry.js`](lib/extractor-registry.js). New extractors are auto-discovered from `lib/extractors/` — register, export, and the registry picks them up.
+Full contract, node/edge shapes, `testPairs` opt-in for test-map alerts, and a minimal skeleton live in [`docs/authoring-extractors.md`](docs/authoring-extractors.md). New extractors are auto-discovered from `extractors/` — drop a module that exports `extensions` and `extract`, and the registry picks it up on the next scan.
 
 ## License
 

@@ -1,5 +1,7 @@
 'use strict';
 
+// @tests extractors/javascript.js
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/javascript');
@@ -110,5 +112,26 @@ describe('JavaScript Extractor', () => {
     const names = result.edge_types.map(et => et.name);
     assert.ok(names.includes('imports'));
     assert.ok(names.includes('exports'));
+  });
+
+  it('candidateTestPaths includes flattened-parent convention for nested dirs', () => {
+    const paths = extractor.testPairs.candidateTestPaths('lib/test-alerts/pairing.js');
+    assert.ok(
+      paths.includes('test/test-alerts-pairing.test.js'),
+      'should include flattened test/<parent>-<name>.test.js'
+    );
+    assert.ok(
+      paths.includes('tests/test-alerts-pairing.test.js'),
+      'should include flattened tests/<parent>-<name>.test.js'
+    );
+  });
+
+  it('candidateTestPaths skips flattened-parent when source is at project root', () => {
+    const paths = extractor.testPairs.candidateTestPaths('index.js');
+    // dir is '.' → no sensible parent name, so no flattened candidate with '.-index.test.js'
+    assert.ok(
+      !paths.some(p => p.includes('.-')),
+      'no malformed parent-prefix candidates when source is at root'
+    );
   });
 });

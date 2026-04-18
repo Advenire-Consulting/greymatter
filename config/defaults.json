@@ -29,5 +29,11 @@
   "spec_check": {
     "preamble": false,
     "command_log_path": null
+  },
+  "test_alerts": {
+    "enabled_projects": [],
+    "check_stale_pairs": true,
+    "check_missing_tests": false,
+    "alert_output_dir": "~/.claude/greymatter/testalerts"
   }
 }

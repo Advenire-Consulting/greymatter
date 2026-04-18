@@ -26,7 +26,7 @@ from indexed data.
 | `--trace <identifier> [--project <p>]` | Follow a value — where set, who reads it, what it calls |
 | `--schema [--project <p>]` | Database table structures |
 | `--lookup <file> --project <p>` | Exports, routes, db refs, sensitivity |
-| `--list-projects` | Browse all known projects |
+| `--list-projects` | Browse all known projects and their recorded root paths. Shows `(not recorded — rescan to register root)` for projects scanned before root tracking landed. |
 
 **Token-saving rule:** When the user asks you to work on a project you haven't touched
 this session, run `--reorient <project>` for recent activity (sessions, decisions, files
@@ -123,6 +123,24 @@ each write.
 
 <!-- endregion -->
 
+## Test-map Alerts
+
+Opt-in stale-test-pair detector. Scans one or more projects for source files whose paired test wasn't touched in the same commit range (`stale_pair`) or never had a paired test at all (`missing_test`), and writes a per-project markdown report.
+
+    node $PLUGIN_ROOT/scripts/test-alerts.js [--audit] [--project <name>]
+
+| Flag | What it does |
+|------|-------------|
+| `--audit` | Full mtime-based sweep using `file_hashes.updated_at`. Default is incremental (git diff `last_scan_sha..HEAD`). |
+| `--project <name>` | Scope to one project in `config.test_alerts.enabled_projects`. Without it, the CLI iterates every enabled project. Unknown names exit non-zero. |
+| `--help` / `-h` | Print usage. |
+
+**Activation.** Feature is silent until `config.test_alerts.enabled_projects` lists at least one project. Project names in that list must match the strings shown by `node scripts/query.js --list-projects` (the names assigned at scan time, not filesystem paths). Once enabled, the session-start hook runs an incremental scan on every session; the CLI is for mid-session / on-demand runs after a pull. See [`config/defaults.md`](../config/defaults.md) for the full table (`check_stale_pairs`, `check_missing_tests`, `alert_output_dir`).
+
+**Extractor-driven.** Pairing rules live in each language extractor's `testPairs` block. JS, TS, Python, and Svelte ship enabled; Markdown is intentionally opted out (no test convention for docs). User-authored extractors participate the moment they export `testPairs`. See [`authoring-extractors.md`](authoring-extractors.md) for the contract and the annotation-regex gotcha.
+
+**Slash command.** `/test-map` runs the CLI for the current project, reads the output file, and summarizes open findings — optionally converting them to TodoWrite items.
+
 ## Spec/Plan Tools
 
     node $PLUGIN_ROOT/scripts/spec-check.js <command>
@@ -158,6 +176,7 @@ By default, `--chunk-content` and `--dispatch` emit just the semantic sections �
 | "Where is this string/pattern used?" | `grep.js <pattern>` |
 | "How much code uses pattern A vs B?" | `classify.js --inline "A=..." "B=..."` |
 | "What did we decide about X?" | `search.js` + `read-window.js` |
+| "Which source files drifted away from their tests?" | `test-alerts.js --project <name>` (or `/test-map`) |
 
 ## Combined Recipes
 

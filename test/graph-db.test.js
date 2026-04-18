@@ -120,4 +120,55 @@ describe('GraphDB', () => {
     const anns = db.db.prepare('SELECT * FROM annotations WHERE id = ?').all(annId);
     assert.equal(anns.length, 0);
   });
+
+  it('setProjectRoot / getProjectRoot round-trip', () => {
+    assert.equal(db.getProjectRoot('drip'), null);
+    db.setProjectRoot('drip', '/home/user/code/drip');
+    assert.equal(db.getProjectRoot('drip'), '/home/user/code/drip');
+    db.setProjectRoot('drip', '/home/user/projects/drip');
+    assert.equal(db.getProjectRoot('drip'), '/home/user/projects/drip');
+  });
+
+  it('setProjectRoot preserves last_scan_sha from upsertScanState', () => {
+    db.upsertScanState('p', 'abc123', 'audit');
+    db.setProjectRoot('p', '/tmp/p');
+    const state = db.getScanState('p');
+    assert.equal(state.last_scan_sha, 'abc123');
+    assert.equal(state.last_scan_mode, 'audit');
+    assert.equal(state.root_path, '/tmp/p');
+  });
+
+  it('upsertScanState preserves root_path from setProjectRoot', () => {
+    db.setProjectRoot('p', '/tmp/p');
+    db.upsertScanState('p', 'sha1', 'incremental');
+    assert.equal(db.getProjectRoot('p'), '/tmp/p');
+  });
+
+  it('migrates pre-existing DB without root_path column via ALTER TABLE', () => {
+    db.close();
+    try { fs.unlinkSync(dbPath); } catch {}
+    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
+
+    const Database = require('better-sqlite3');
+    const raw = new Database(dbPath);
+    raw.exec(`
+      CREATE TABLE project_scan_state (
+        project TEXT PRIMARY KEY,
+        last_scan_sha TEXT,
+        last_scan_at DATETIME,
+        last_scan_mode TEXT CHECK(last_scan_mode IN ('incremental', 'audit'))
+      );
+      INSERT INTO project_scan_state (project, last_scan_sha, last_scan_at, last_scan_mode)
+      VALUES ('legacy', 'sha0', CURRENT_TIMESTAMP, 'audit');
+    `);
+    raw.close();
+
+    db = new GraphDB(dbPath);
+    assert.equal(db.getProjectRoot('legacy'), null, 'legacy row has null root_path after migration');
+    const state = db.getScanState('legacy');
+    assert.equal(state.last_scan_sha, 'sha0', 'pre-existing state preserved through migration');
+    db.setProjectRoot('legacy', '/tmp/legacy');
+    assert.equal(db.getProjectRoot('legacy'), '/tmp/legacy');
+  });
 });

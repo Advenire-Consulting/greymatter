@@ -128,4 +128,40 @@ function extract(content, filePath, project) {
   return { nodes, edges, edge_types: USED_EDGE_TYPES };
 }
 
-module.exports = { extensions: ['.svelte'], extract };
+// Svelte components are rarely test files themselves — tests live in sibling
+// .test.ts / .test.js files that import the component. candidateTestPaths
+// therefore crosses extensions: given Foo.svelte it returns Foo.test.ts etc.
+const testPairs = {
+  isTestFile(relPath) {
+    return /\.test\.svelte$|\.spec\.svelte$/.test(relPath)
+      || /(^|\/)(test|tests|__tests__|spec)\//.test(relPath);
+  },
+
+  candidateTestPaths(sourceRelPath) {
+    const dir = path.dirname(sourceRelPath);
+    const name = path.basename(sourceRelPath, '.svelte');
+    const testExtensions = ['.test.ts', '.spec.ts', '.test.js', '.spec.js'];
+    const parent = dir === '.' ? '' : path.basename(dir);
+    const candidates = [];
+    for (const ext of testExtensions) {
+      candidates.push(path.join(dir, `${name}${ext}`));
+      candidates.push(path.join(dir, '__tests__', `${name}${ext}`));
+      candidates.push(path.join('test', `${name}${ext}`));
+      candidates.push(path.join('tests', `${name}${ext}`));
+      // Flattened-parent convention: routes/foo/Bar.svelte -> test/foo-Bar.test.ts
+      if (parent) {
+        candidates.push(path.join('test', `${parent}-${name}${ext}`));
+        candidates.push(path.join('tests', `${parent}-${name}${ext}`));
+      }
+    }
+    return candidates;
+  },
+
+  parseAnnotations(content) {
+    const header = content.split('\n').slice(0, 20).join('\n');
+    const matches = [...header.matchAll(/\/\/[ \t]*@tests[ \t]+(\S+)/g)];
+    return matches.map(m => m[1]);
+  },
+};
+
+module.exports = { extensions: ['.svelte'], extract, testPairs };

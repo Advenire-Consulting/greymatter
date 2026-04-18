@@ -122,4 +122,18 @@ describe('GraphQueries', () => {
     const results3 = queries.findNodes('handle', 'test');
     assert.strictEqual(results3.length, 2, 'prefix search should still work');
   });
+
+  it('listProjectsWithRoots joins project_scan_state, null for unrecorded roots', () => {
+    // beforeEach seeds project 'p' with no root_path; add two more projects.
+    db.upsertNode({ project: 'has-root', file: 'a.js', name: 'x', type: 'function', line: 1 });
+    db.upsertNode({ project: 'no-root', file: 'a.js', name: 'y', type: 'function', line: 1 });
+    db.setProjectRoot('has-root', '/home/user/has-root');
+
+    const rows = queries.listProjectsWithRoots();
+    const byName = Object.fromEntries(rows.map(r => [r.name, r.root_path]));
+    assert.equal(byName['has-root'], '/home/user/has-root');
+    assert.equal(byName['no-root'], null, 'project with no scan state has null root_path');
+    assert.equal(byName['p'], null, 'seeded project p has no root_path recorded');
+    assert.equal(rows.length, 3);
+  });
 });

@@ -68,3 +68,22 @@ Safety policy applied before tool use. Each category accepts: `block` (refuse), 
 | `spec_check.command_log_path` | `null` | When set to a path, `--dispatch` appends one `Read <path> and execute it.` line per chunk to that file (creating parent dirs as needed). | Enabling writes to an external file on every dispatch. Leave `null` unless you have a clipboard/command-log integration watching that path. |
 
 CLI flags override this config per-invocation: `--preamble` / `--no-preamble` override `preamble`, and `--command-log <path>` / `--command-log=` override `command_log_path`.
+
+## Test alerts
+
+Opt-in stale-test-pair detection. When a project is listed in `enabled_projects`, greymatter cross-references recent source-file changes against changes to their paired tests and writes findings to `alert_output_dir/<project>.md`. When the list is empty (default), the feature is completely inert.
+
+**Finding project names.** The strings in `enabled_projects` must match the names greymatter assigned during scan (stored in `graph.db`, not filesystem paths). List them with:
+
+    node scripts/query.js --list-projects
+
+Example — to enable test alerts for this repo, the entry is `"greymatter"`, not `/home/you/code/greymatter`. Unknown names exit non-zero from the CLI.
+
+| Setting | Default | What it does | What you lose if changed |
+|---------|---------|--------------|--------------------------|
+| `test_alerts.enabled_projects` | `[]` | List of project names (as shown by `query.js --list-projects`) that participate in the scan. Session-start and CLI iterate exactly this list. | Empty = feature disabled; no output files, no stderr alerts. |
+| `test_alerts.check_stale_pairs` | `true` | Flag source files whose paired test was not touched in the same commit range. | Disabling removes the primary signal; only `missing_test` findings remain. |
+| `test_alerts.check_missing_tests` | `false` | Flag source files that have no paired test at all. Off by default — noisy in thin-coverage codebases. | Enabling adds a "missing tests" section to every output file. |
+| `test_alerts.alert_output_dir` | `~/.claude/greymatter/testalerts` | Where the per-project markdown reports are written. `~` expands to `$HOME`. | Custom path lets reports live next to other project artifacts. |
+
+**Extractor participation.** Pairing logic lives in the extractors. The feature ships with paired-file support for `extractors/javascript.js` and `extractors/typescript.js`. Other languages (`python.js`, `svelte.js`, `markdown.js`) do not participate until their extractor exports a `testPairs` block — see the extractor contract in `docs/superpowers/specs/2026-04-17-test-map-alerts-design.md:124-170`. User-authored extractors gain participation the moment they add the block.

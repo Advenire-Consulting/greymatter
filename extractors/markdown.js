@@ -1,5 +1,10 @@
 'use strict';
 
+// No testPairs export: Markdown has no conventional source↔test pairing.
+// Docs are not executable; flagging every doc as a "missing_test" would be
+// pure noise. Projects that want custom doc/spec pairing can author a
+// project-local extractor — see docs/authoring-extractors.md.
+
 // Edge types produced by this extractor
 const USED_EDGE_TYPES = [
   { name: 'references', category: 'documentary', followsForBlastRadius: false, impliesStaleness: true, description: 'Doc file references a code file by path' },

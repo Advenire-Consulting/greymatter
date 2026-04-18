@@ -415,6 +415,7 @@ function main() {
   for (const { dir, name } of pairs) {
     process.stdout.write(`Scanning ${name} (${dir})...\n`);
     const stats = scanProject(dir, name, db);
+    db.setProjectRoot(name, dir);
     process.stdout.write(`  ${stats.filesScanned} scanned, ${stats.filesSkipped} skipped, ${stats.nodesCreated} nodes, ${stats.edgesCreated} edges\n`);
     totalScanned += stats.filesScanned;
     totalSkipped += stats.filesSkipped;

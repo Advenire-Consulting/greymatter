@@ -1,5 +1,7 @@
 'use strict';
 
+// @tests extractors/python.js
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/python');
@@ -76,5 +78,62 @@ def standalone_function():
     const standalone = result.nodes.find(n => n.name === 'standalone_function');
     assert.ok(standalone, 'standalone_function should be extracted');
     assert.strictEqual(standalone.type, 'function', 'standalone should be type function');
+  });
+
+  describe('testPairs.isTestFile', () => {
+    it('matches test_ prefix and _test suffix', () => {
+      assert.equal(extractor.testPairs.isTestFile('pkg/test_foo.py'), true);
+      assert.equal(extractor.testPairs.isTestFile('pkg/foo_test.py'), true);
+      assert.equal(extractor.testPairs.isTestFile('pkg/foo.py'), false);
+    });
+
+    it('matches test/ and tests/ directories', () => {
+      assert.equal(extractor.testPairs.isTestFile('tests/anything.py'), true);
+      assert.equal(extractor.testPairs.isTestFile('test/anything.py'), true);
+    });
+  });
+
+  describe('testPairs.candidateTestPaths', () => {
+    it('emits sibling test_<name>.py and <name>_test.py', () => {
+      const candidates = extractor.testPairs.candidateTestPaths('pkg/foo.py');
+      assert.ok(candidates.includes('pkg/test_foo.py'));
+      assert.ok(candidates.includes('pkg/foo_test.py'));
+    });
+
+    it('emits flat + mirror tests/ paths', () => {
+      const candidates = extractor.testPairs.candidateTestPaths('pkg/foo.py');
+      assert.ok(candidates.includes('tests/pkg/test_foo.py'));
+      assert.ok(candidates.includes('tests/test_foo.py'));
+    });
+
+    it('handles src-layout by stripping src/ prefix for tests mirror', () => {
+      const candidates = extractor.testPairs.candidateTestPaths('src/pkg/foo.py');
+      assert.ok(candidates.includes('tests/pkg/test_foo.py'));
+      assert.ok(candidates.includes('test/pkg/test_foo.py'));
+    });
+  });
+
+  describe('testPairs.parseAnnotations', () => {
+    it('captures # @tests annotations', () => {
+      const sources = extractor.testPairs.parseAnnotations(
+        "# @tests pkg/foo.py\nimport os\n"
+      );
+      assert.deepEqual(sources, ['pkg/foo.py']);
+    });
+
+    it('does not capture across newlines for bare # @tests', () => {
+      const sources = extractor.testPairs.parseAnnotations(
+        "# @tests\nimport os\n"
+      );
+      assert.deepEqual(sources, []);
+    });
+
+    it('only scans the first 20 lines', () => {
+      const preamble = Array(25).fill('# header').join('\n');
+      const sources = extractor.testPairs.parseAnnotations(
+        `${preamble}\n# @tests pkg/late.py\n`
+      );
+      assert.deepEqual(sources, []);
+    });
   });
 });

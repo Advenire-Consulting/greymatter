@@ -116,4 +116,43 @@ function extract(content, filePath, project) {
   return { nodes, edges, edge_types: USED_EDGE_TYPES };
 }
 
-module.exports = { extensions: ['.py'], extract };
+const testPairs = {
+  isTestFile(relPath) {
+    const base = path.basename(relPath);
+    if (/^test_.+\.py$/.test(base)) return true;
+    if (/.+_test\.py$/.test(base)) return true;
+    return /(^|\/)(test|tests)\//.test(relPath);
+  },
+
+  candidateTestPaths(sourceRelPath) {
+    const ext = path.extname(sourceRelPath);
+    const dir = path.dirname(sourceRelPath);
+    const name = path.basename(sourceRelPath, ext);
+    const candidates = [
+      path.join(dir, `test_${name}${ext}`),
+      path.join(dir, `${name}_test${ext}`),
+      path.join('tests', dir, `test_${name}${ext}`),
+      path.join('test', dir, `test_${name}${ext}`),
+      path.join('tests', `test_${name}${ext}`),
+      path.join('test', `test_${name}${ext}`),
+    ];
+    // src-layout: src/pkg/foo.py → tests/pkg/test_foo.py
+    const srcMatch = sourceRelPath.match(/^src\/(.+)$/);
+    if (srcMatch) {
+      const inner = path.dirname(srcMatch[1]);
+      candidates.push(
+        path.join('tests', inner, `test_${name}${ext}`),
+        path.join('test', inner, `test_${name}${ext}`),
+      );
+    }
+    return candidates;
+  },
+
+  parseAnnotations(content) {
+    const header = content.split('\n').slice(0, 20).join('\n');
+    const matches = [...header.matchAll(/#[ \t]*@tests[ \t]+(\S+)/g)];
+    return matches.map(m => m[1]);
+  },
+};
+
+module.exports = { extensions: ['.py'], extract, testPairs };

@@ -199,6 +199,63 @@ function run(options = {}) {
     process.stderr.write(`greymatter session-start: reorientation: ${err.message}\n`);
   }
 
+  // 8. Test-map alerts (opt-in per project via config.test_alerts.enabled_projects)
+  try {
+    const enabled = (config.test_alerts && config.test_alerts.enabled_projects) || [];
+    if (enabled.length > 0 && fs.existsSync(dbPath)) {
+      const { runScan } = require('../scripts/test-alerts');
+      const rootLookup = new GraphDB(dbPath);
+      try {
+      for (const project of enabled) {
+        let projectRoot = rootLookup.getProjectRoot(project);
+        if (!projectRoot) {
+          projectRoot = path.join(process.cwd(), project);
+          process.stderr.write(
+            `greymatter test-alerts: no stored root_path for ${project}; falling back to CWD-join (${projectRoot}). `
+            + `Rescan with scripts/scan.js --dir <path> --project ${project} to record the root.\n`
+          );
+        }
+        const logger = {
+          info: () => {},
+          warn: m => process.stderr.write(m + '\n'),
+        };
+        const result = runScan({
+          project, mode: 'incremental', dataDir, projectRoot, config,
+          memoryDbPath, graphDbPath: dbPath, logger,
+        });
+        if (result.skipped) {
+          // Per spec alert-policy table: reason 'not_git' is the only one that
+          // emits a one-line message; the rest of the skipped reasons already
+          // logged via logger.warn inside runScan.
+          continue;
+        }
+        if (result.baseline) {
+          const auditHint = (config.test_alerts && config.test_alerts.check_missing_tests)
+            ? ` (run --audit first to surface pre-existing missing tests)`
+            : '';
+          process.stderr.write(
+            `greymatter test-alerts: ${project} baseline seeded.${auditHint} `
+            + `Run node scripts/test-alerts.js --audit --project ${project} for a full sweep.\n`
+          );
+          continue;
+        }
+        if (result.openCount === 0 && result.resolvedCount === 0) {
+          // HEAD changed, zero findings-delta — silent per spec.
+          continue;
+        }
+        process.stderr.write(
+          `greymatter test-alerts: ${project} — ${result.openCount} open, `
+          + `${result.resolvedCount} resolved → ${result.outputPath}\n`
+        );
+      }
+      } finally {
+        rootLookup.close();
+      }
+    }
+  } catch (err) {
+    process.stderr.write(`greymatter session-start: test-alerts: ${err.message}\n`);
+  }
+
   // 9. Output project list from graph.db
   let projects = [];
   if (fs.existsSync(dbPath)) {
