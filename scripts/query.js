@@ -254,11 +254,17 @@ function main() {
     const lines = content.split('\n');
     // Escape regex metacharacters in user-supplied identifier
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const declRe = new RegExp([
+      `function\\s+${escaped}\\b`,
+      `(?:const|let|var)\\s+${escaped}\\s*=`,
+      `^\\s*class\\s+${escaped}\\b`,
+      `^\\s*(?:async\\s+|static\\s+|get\\s+|set\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`,
+      `^\\s*${escaped}\\s*:\\s*(?:async\\s+)?(?:function\\b|\\([^)]*\\)\\s*=>)`,
+      `^\\s*(?:module\\.)?exports\\.${escaped}\\s*=`,
+    ].join('|'));
     let start = -1;
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].match(new RegExp(`(?:function\\s+${escaped}|(?:const|let|var)\\s+${escaped}\\s*=)`))) {
-        start = i; break;
-      }
+      if (declRe.test(lines[i])) { start = i; break; }
     }
     if (start === -1) {
       process.stdout.write(`(${name} not found in ${file})\n`);

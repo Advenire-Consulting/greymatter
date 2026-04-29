@@ -237,4 +237,55 @@ describe('query.js --body CLI', () => {
     });
     assert.ok(result.includes('not found'), 'regex metacharacters should not cause ReDoS or false match');
   });
+
+  function runBody(file, name) {
+    return execFileSync('node', [queryScript, '--body', file, name], { encoding: 'utf-8', timeout: 5000 });
+  }
+
+  it('--body extracts a class declaration', () => {
+    const f = path.join(tmpDir, 'cls.js');
+    fs.writeFileSync(f, 'class Widget {\n  hello() { return 1; }\n}\n');
+    const out = runBody(f, 'Widget');
+    assert.ok(out.includes('class Widget {'), 'should extract class start');
+    assert.ok(out.includes('hello()'), 'should include method');
+    assert.ok(out.trim().endsWith('}'), 'should end at matching brace');
+  });
+
+  it('--body does not match a class name when used as a call site', () => {
+    const f = path.join(tmpDir, 'callsite.js');
+    fs.writeFileSync(f, 'function outer() {\n  Widget(args);\n}\n');
+    const out = runBody(f, 'Widget');
+    assert.ok(out.includes('not found'), 'call site should not match class declaration pattern');
+  });
+
+  it('--body extracts a class method', () => {
+    const f = path.join(tmpDir, 'method.js');
+    fs.writeFileSync(f, 'class Store {\n  insertSession(args) {\n    return 42;\n  }\n}\n');
+    const out = runBody(f, 'insertSession');
+    assert.ok(out.includes('insertSession(args) {'), 'should extract method start');
+    assert.ok(out.includes('return 42'), 'should include method body');
+  });
+
+  it('--body does not match a method name at a call site', () => {
+    const f = path.join(tmpDir, 'method-callsite.js');
+    fs.writeFileSync(f, 'function outer() {\n  insertSession(args);\n}\n');
+    const out = runBody(f, 'insertSession');
+    // The function 'outer' contains a call to insertSession; the regex must not anchor to the call line.
+    assert.ok(!out.includes('insertSession(args);\n}'), 'should not slice from call site');
+  });
+
+  it('--body extracts an object-literal method', () => {
+    const f = path.join(tmpDir, 'obj.js');
+    fs.writeFileSync(f, 'const api = {\n  fetchData: function (id) {\n    return id;\n  },\n};\n');
+    const out = runBody(f, 'fetchData');
+    assert.ok(out.includes('fetchData: function'), 'should extract object-method start');
+    assert.ok(out.includes('return id'), 'should include body');
+  });
+
+  it('--body does not match a property name when used as a key elsewhere', () => {
+    const f = path.join(tmpDir, 'obj-prop.js');
+    fs.writeFileSync(f, 'const config = {\n  fetchData: someValue,\n};\n');
+    const out = runBody(f, 'fetchData');
+    assert.ok(out.includes('not found'), 'plain key:value (not function/arrow) should not match');
+  });
 });

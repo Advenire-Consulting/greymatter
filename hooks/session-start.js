@@ -187,7 +187,28 @@ function run(options = {}) {
     }
   }
 
-  // 7. Build per-project reorientation context from memory.db → graph.db
+  // 7. Reconcile drift: purge files that no longer exist on disk, re-extract files
+  //    whose mtime or git-diff says they changed since last scan. Runs before
+  //    reorientation so reorientation reads from a clean graph. Non-fatal on error.
+  //    Writes diagnostics to stderr only — stdout is reserved for the single
+  //    JSON envelope at step 10. DB handle close in finally is mandatory (spec L135).
+  let reconcileDb = null;
+  try {
+    if (fs.existsSync(dbPath)) {
+      const { reconcileAll } = require('../lib/reconcile');
+      reconcileDb = new GraphDB(dbPath);
+      reconcileAll({
+        db: reconcileDb,
+        logger: (line) => process.stderr.write(line + '\n'),
+      });
+    }
+  } catch (err) {
+    process.stderr.write(`[reconcile] failed: ${err.message}\n`);
+  } finally {
+    if (reconcileDb) reconcileDb.close();
+  }
+
+  // 8. Build per-project reorientation context from memory.db → graph.db
   try {
     if (fs.existsSync(memoryDbPath) && fs.existsSync(dbPath)) {
       const result = buildProjectContext(memoryDbPath, dbPath);
@@ -199,7 +220,7 @@ function run(options = {}) {
     process.stderr.write(`greymatter session-start: reorientation: ${err.message}\n`);
   }
 
-  // 8. Test-map alerts (opt-in per project via config.test_alerts.enabled_projects)
+  // 9. Test-map alerts (opt-in per project via config.test_alerts.enabled_projects)
   try {
     const enabled = (config.test_alerts && config.test_alerts.enabled_projects) || [];
     if (enabled.length > 0 && fs.existsSync(dbPath)) {
@@ -256,7 +277,7 @@ function run(options = {}) {
     process.stderr.write(`greymatter session-start: test-alerts: ${err.message}\n`);
   }
 
-  // 9. Output project list from graph.db
+  // 10. Output project list from graph.db
   let projects = [];
   if (fs.existsSync(dbPath)) {
     let db;

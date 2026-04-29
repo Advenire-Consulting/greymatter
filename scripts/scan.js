@@ -52,15 +52,19 @@ function resolveImportPath(sourceFile, importTarget, projectDir) {
   return path.relative(projectDir, resolvedAbs);
 }
 
-function scanProject(projectDir, projectName, graphDb) {
+// extractFiles — the core two-pass extraction engine.
+// forceFiles: optional Set of project-relative paths to re-extract even if the hash is unchanged.
+// When null/undefined, behaves identically to the original scanProject (hash-based incremental).
+function extractFiles({ db, project, rootPath, forceFiles = null }) {
   const registry = new ExtractorRegistry();
+  const forceSet = forceFiles ? new Set(forceFiles) : null;
 
   // Seed baseline edge types
   for (const et of SEED_EDGE_TYPES) {
-    graphDb.registerEdgeType(et);
+    db.registerEdgeType(et);
   }
 
-  const files = walkDir(projectDir, projectDir, registry);
+  const files = walkDir(rootPath, rootPath, registry);
   let filesScanned = 0;
   let filesSkipped = 0;
   let nodesCreated = 0;
@@ -74,7 +78,8 @@ function scanProject(projectDir, projectName, graphDb) {
 
   // First pass: insert nodes, build fileNodeMaps
   for (const absPath of files) {
-    const relPath = path.relative(projectDir, absPath);
+    const relPath = path.relative(rootPath, absPath);
+    const forced = forceSet !== null && forceSet.has(relPath);
 
     let content;
     try {
@@ -85,14 +90,14 @@ function scanProject(projectDir, projectName, graphDb) {
     }
 
     const hash = hashContent(content);
-    const existingHash = graphDb.getFileHash(projectName, relPath);
+    const existingHash = forced ? null : db.getFileHash(project, relPath);
 
-    if (existingHash === hash) {
+    if (!forced && existingHash === hash) {
       filesSkipped++;
       // Load existing node map from DB for edge resolution
-      const existingNodes = graphDb.db.prepare(
+      const existingNodes = db.db.prepare(
         'SELECT name, id FROM nodes WHERE project = ? AND file = ? ORDER BY id'
-      ).all(projectName, relPath);
+      ).all(project, relPath);
       const nameMap = new Map();
       for (const n of existingNodes) nameMap.set(n.name, n.id);
       fileNodeMaps.set(relPath, nameMap);
@@ -100,21 +105,21 @@ function scanProject(projectDir, projectName, graphDb) {
     }
 
     filesScanned++;
-    const extracted = registry.extractFile(content, relPath, projectName);
+    const extracted = registry.extractFile(content, relPath, project);
 
     // Register edge types declared by this extractor
     for (const et of extracted.edge_types || []) {
-      graphDb.registerEdgeType(et);
+      db.registerEdgeType(et);
     }
 
     // Clear stale nodes/edges
-    graphDb.deleteFileEdges(projectName, relPath);
-    graphDb.deleteFileNodes(projectName, relPath);
+    db.deleteFileEdges(project, relPath);
+    db.deleteFileNodes(project, relPath);
 
     // Insert new nodes; build name→id map for this file
     const nameMap = new Map();
     for (const node of extracted.nodes) {
-      const id = graphDb.upsertNode(node);
+      const id = db.upsertNode(node);
       if (!nameMap.has(node.name)) nameMap.set(node.name, id);
       nodesCreated++;
     }
@@ -141,7 +146,7 @@ function scanProject(projectDir, projectName, graphDb) {
 
       if (edge.type === 'imports') {
         // target is a relative path like './lib/utils'
-        const resolved = resolveImportPath(relPath, edge.target, projectDir);
+        const resolved = resolveImportPath(relPath, edge.target, rootPath);
         const candidates = [resolved, resolved + '.js', path.join(resolved, 'index.js')];
 
         for (const candidate of candidates) {
@@ -156,8 +161,8 @@ function scanProject(projectDir, projectName, graphDb) {
           // Create a stub module node for unresolvable import
           const targetFile = resolved.endsWith('.js') ? resolved : resolved + '.js';
           const stubName = path.basename(targetFile);
-          targetId = graphDb.upsertNode({
-            project: projectName,
+          targetId = db.upsertNode({
+            project,
             file: targetFile,
             name: stubName,
             type: 'module',
@@ -185,8 +190,8 @@ function scanProject(projectDir, projectName, graphDb) {
         if (targetId == null) {
           // Create a stub node
           const stubType = edge.type === 'queries_table' ? 'table' : 'stub';
-          targetId = graphDb.upsertNode({
-            project: projectName,
+          targetId = db.upsertNode({
+            project,
             file: relPath,
             name: edge.target,
             type: stubType,
@@ -199,12 +204,12 @@ function scanProject(projectDir, projectName, graphDb) {
       if (targetId == null) continue;
 
       try {
-        graphDb.insertEdge({
+        db.insertEdge({
           sourceId,
           targetId,
           type: edge.type,
           category: edge.category,
-          sourceProject: edge.sourceProject || projectName,
+          sourceProject: edge.sourceProject || project,
           sourceFile: edge.sourceFile || relPath,
           data: edge.data || null,
           sequence: edge.sequence || null,
@@ -215,10 +220,14 @@ function scanProject(projectDir, projectName, graphDb) {
       }
     }
 
-    graphDb.setFileHash(projectName, relPath, hash);
+    db.setFileHash(project, relPath, hash);
   }
 
   return { filesScanned, filesSkipped, nodesCreated, edgesCreated };
+}
+
+function scanProject(projectDir, projectName, graphDb) {
+  return extractFiles({ db: graphDb, project: projectName, rootPath: projectDir });
 }
 
 function discoverProjects(workspaceDir) {
@@ -466,4 +475,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { scanProject, discoverProjects, seedAliases };
+module.exports = { extractFiles, scanProject, discoverProjects, seedAliases };
