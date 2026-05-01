@@ -28,7 +28,11 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.6.2"
+  },
+  "bin": {
+    "greymatter-mcp": "scripts/mcp-server.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js lib/spec-check/*.test.js",

@@ -1,5 +1,29 @@
 # greymatter — Code + Documentation Knowledge Graph
 
+<!-- region:mcp -->
+## greymatter — MCP mode
+
+The greymatter MCP server is active. Use the structured tools your client exposes:
+
+- `get_status` — server health, project list, label coverage at a glance.
+- `get_project_overview(project)` — recent sessions + file map for a project.
+- `get_node_bundle(project, file, name, line?)` — node body + labels + 1-hop edges in one call.
+- `walk_flow(project, file, name, max_depth?)` — path skeleton from a starting node.
+- `query_blast_radius(project, file)` — file-level dependencies.
+- `find_identifier(name, project?)` — locate a symbol.
+- `get_label_coverage(project, file?, name?)` — labeling density at project / file / neighborhood scope.
+- `grep_project(project, pattern, options?)` — project-scoped text search.
+
+### Recipes
+
+- **Orient in a new project:** `get_project_overview` + `get_status`. Use `/orient_project` if your client supports prompts.
+- **Safe to delete?** `query_blast_radius` for code consumers, then `grep_project` with the file basename for textual contracts. Use `/safe_to_delete` if available.
+- **Understand a flow:** `walk_flow` for the skeleton, then `get_node_bundle` on the steps that matter. Use `/understand_flow` if available.
+
+The CLI surface is still installed and functional; this region intentionally omits flag vocabulary because the MCP tool catalog already carries it.
+<!-- endregion -->
+
+<!-- region:cli-fallback -->
 Spatial awareness and long-term memory for code navigation and project history.
 All commands run from your workspace directory.
 
@@ -201,3 +225,4 @@ first-class dependents.
 - **"Does this path exist?" / "What's in this directory?"** → `ls`
 - **User gave a file path** → `Read` it directly
 - **Searching for a known string in 1-2 specific files** → `Grep`
+<!-- endregion -->

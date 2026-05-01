@@ -8,6 +8,8 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const { GraphDB } = require('../lib/graph-db');
 const { scanProject } = require('../scripts/scan');
+const { grepProject } = require('../scripts/grep');
+const { UnknownProjectError } = require('../lib/mcp/errors');
 
 const scriptPath = path.join(__dirname, '..', 'scripts', 'grep.js');
 
@@ -113,5 +115,108 @@ describe('grep.js CLI', () => {
     ]);
     assert.equal(code, 1);
     assert.match(stderr, /No projects found/);
+  });
+});
+
+// ── grepProject library ────────────────────────────────────────────────────────
+
+describe('grepProject library', () => {
+  let db, dbPath, root;
+
+  beforeEach(() => {
+    dbPath = path.join(os.tmpdir(), `greplib-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    db = new GraphDB(dbPath);
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'greplib-root-'));
+
+    fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
+
+    // File A: verifyToken at line 42
+    const fileALines = Array.from({ length: 41 }, (_, i) => `// placeholder line ${i + 1}`);
+    fileALines.push('function verifyToken(token) { return true; }');
+    fs.writeFileSync(path.join(root, 'lib', 'fileA.js'), fileALines.join('\n'));
+
+    // File B: verifyToken at line 7
+    const fileBLines = Array.from({ length: 6 }, (_, i) => `// placeholder line ${i + 1}`);
+    fileBLines.push('const result = verifyToken(token);');
+    fs.writeFileSync(path.join(root, 'lib', 'fileB.js'), fileBLines.join('\n'));
+
+    db.setProjectRoot('p1', root);
+    db.setFileHash('p1', 'lib/fileA.js', 'hashA');
+    db.setFileHash('p1', 'lib/fileB.js', 'hashB');
+  });
+
+  afterEach(() => {
+    db.close();
+    try { fs.unlinkSync(dbPath); } catch {}
+    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
+    try { fs.rmSync(root, { recursive: true }); } catch {}
+  });
+
+  it('returns 2 file entries for verifyToken pattern', () => {
+    const results = grepProject(db, 'p1', 'verifyToken');
+    assert.equal(results.length, 2);
+    const files = results.map(r => r.file).sort();
+    assert.ok(files.includes('lib/fileA.js'));
+    assert.ok(files.includes('lib/fileB.js'));
+  });
+
+  it('each match has line, before, match, after', () => {
+    const results = grepProject(db, 'p1', 'verifyToken');
+    for (const entry of results) {
+      assert.ok(Array.isArray(entry.matches) && entry.matches.length > 0);
+      const m = entry.matches[0];
+      assert.equal(typeof m.line, 'number');
+      assert.ok(Array.isArray(m.before));
+      assert.equal(typeof m.match, 'string');
+      assert.ok(Array.isArray(m.after));
+    }
+  });
+
+  it('match occurs at correct line numbers', () => {
+    const results = grepProject(db, 'p1', 'verifyToken');
+    const byFile = Object.fromEntries(results.map(r => [r.file, r]));
+    assert.equal(byFile['lib/fileA.js'].matches[0].line, 42);
+    assert.equal(byFile['lib/fileB.js'].matches[0].line, 7);
+  });
+
+  it('options.context = 0 produces empty before/after arrays', () => {
+    const results = grepProject(db, 'p1', 'verifyToken', { context: 0 });
+    for (const entry of results) {
+      for (const m of entry.matches) {
+        assert.deepEqual(m.before, []);
+        assert.deepEqual(m.after, []);
+      }
+    }
+  });
+
+  it('options.maxPerFile truncates matches per file', () => {
+    // File with 5 occurrences
+    const lines = Array.from({ length: 10 }, (_, i) => `// line ${i}: verifyToken() called`);
+    fs.mkdirSync(path.join(root, 'lib2'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'lib2', 'multi.js'), lines.join('\n'));
+    db.setFileHash('p1', 'lib2/multi.js', 'hashM');
+
+    const results = grepProject(db, 'p1', 'verifyToken', { maxPerFile: 2 });
+    const multi = results.find(r => r.file === 'lib2/multi.js');
+    assert.ok(multi);
+    assert.ok(multi.matches.length <= 2);
+  });
+
+  it('pattern treated as regex', () => {
+    const results = grepProject(db, 'p1', 'verify\\w+');
+    assert.ok(results.length > 0);
+    for (const entry of results) {
+      for (const m of entry.matches) {
+        assert.ok(/verify\w+/.test(m.match));
+      }
+    }
+  });
+
+  it('throws UnknownProjectError for unknown project', () => {
+    assert.throws(
+      () => grepProject(db, 'no_such_project', 'pattern'),
+      (e) => e instanceof UnknownProjectError && e.code === 'UNKNOWN_PROJECT'
+    );
   });
 });

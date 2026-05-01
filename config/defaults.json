@@ -25,6 +25,8 @@
     "skip_directories": ["node_modules", ".git", "dist", "build", ".next", ".svelte-kit"],
     "max_file_size_kb": 500
   },
+  "mcp_server": false,
+  "mcp_server_log_path": "~/.claude/greymatter/tmp/mcp-server.log",
   "tmp_cleanup_max_age_hours": 24,
   "spec_check": {
     "preamble": false,

@@ -14,6 +14,8 @@ greymatter is the successor to [thebrain](https://github.com/Advenire-Consulting
 
 **Behavioral preferences that persist.** Flag moments that matter with `/dopamine` (lessons from what worked or what burned you) and `/oxytocin` (relational dynamics that shape collaboration). These compile into decision gates that load at session start, so Claude doesn't re-learn your preferences every time.
 
+**Optional MCP server.** Exposes the graph as structured tools over the Model Context Protocol — usable from Claude Desktop, Claude Code, Cursor, Continue, or any MCP-compatible client. Off by default; one command flips it on and regenerates the rules file with tool descriptors instead of CLI flag vocabulary. CLI behavior is unchanged when the server is off, and `disable` restores it round-trip. Full client snippets, tool list, and troubleshooting in [`docs/mcp-server.md`](docs/mcp-server.md).
+
 **Test-map alerts.** Opt-in stale-test-pair detector. For each project you enable, greymatter cross-references recent source changes against their paired test files and flags source commits that didn't carry a matching test update (`stale_pair`) or source files that never had a test at all (`missing_test`). Pairing logic lives in each language extractor — JavaScript, TypeScript, Python, and Svelte ship with pairing enabled; adding another language is an extractor change, not a core change. The session-start hook runs an incremental scan per opted-in project; `scripts/test-alerts.js` handles mid-session re-runs and full-codebase audits; `/test-map` summarizes findings for the current project and can convert them into TodoWrite items.
 
 **Safety hooks on edits and commands.** Before Claude writes a file or runs a shell command, policy hooks classify the target by sensitivity and blast radius and either warn, block, or ask for confirmation. Unparseable commands get flagged for manual review. Configurable per path.
@@ -103,6 +105,18 @@ node scripts/test-alerts.js --audit                       # sweep every enabled 
 ```
 
 Reports are written to `~/.claude/greymatter/testalerts/<project>.md` by default (path configurable via `test_alerts.alert_output_dir`). Pairing logic lives in each language extractor's `testPairs` block — JavaScript and TypeScript ship enabled; adding a new language is an extractor change, not a core change. Full settings reference in [`config/defaults.md`](config/defaults.md#test-alerts); flag table in [`docs/tool-index.md`](docs/tool-index.md#test-map-alerts).
+
+## MCP server
+
+Off by default. When enabled, exposes greymatter's graph as structured tools for MCP clients instead of shelling out to the CLI. Existing CLI usage is unaffected — toggle is round-trip.
+
+```
+node scripts/mcp.js enable    # flip mcp_server: true, regenerate rules file
+node scripts/mcp.js status    # current flag, binary path, rule-file timestamp
+node scripts/mcp.js disable   # restore CLI mode
+```
+
+After enabling, register the server with your MCP client. Client snippets (Claude Desktop, Claude Code, Cursor, Continue), the full tool catalog, and troubleshooting live in [`docs/mcp-server.md`](docs/mcp-server.md).
 
 ## Spec & Plan tooling
 

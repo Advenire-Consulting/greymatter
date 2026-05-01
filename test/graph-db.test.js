@@ -4,7 +4,7 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
-const { GraphDB } = require('../lib/graph-db');
+const { GraphDB, SCHEMA_VERSION } = require('../lib/graph-db');
 
 function tmpDbPath() {
   return path.join(__dirname, `test-graph-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -193,6 +193,32 @@ describe('GraphDB', () => {
     db.deleteFileNodes('p', 'casc.js');
     const after = db.db.prepare('SELECT COUNT(*) as c FROM code_labels WHERE node_id = ?').get(nodeId).c;
     assert.equal(after, 0);
+  });
+
+  it('meta table exists with key (PRIMARY KEY) and value TEXT columns', () => {
+    const cols = db.db.prepare('PRAGMA table_info(meta)').all();
+    const byName = Object.fromEntries(cols.map(c => [c.name, c]));
+    assert.ok(byName.key, 'meta.key column missing');
+    assert.ok(byName.value, 'meta.value column missing');
+    assert.equal(byName.key.pk, 1, 'meta.key should be PRIMARY KEY');
+  });
+
+  it('meta table contains schema_version row matching SCHEMA_VERSION constant', () => {
+    const row = db.db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version');
+    assert.ok(row, 'schema_version row missing from meta');
+    assert.equal(row.value, SCHEMA_VERSION);
+  });
+
+  it('meta table rejects duplicate key via PRIMARY KEY constraint', () => {
+    assert.throws(
+      () => db.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', 'x'),
+      /unique|primary key/i
+    );
+  });
+
+  it('getMeta returns value for existing key and null for missing key', () => {
+    assert.equal(db.getMeta('schema_version'), SCHEMA_VERSION);
+    assert.equal(db.getMeta('nonexistent_key'), null);
   });
 
   it('migrates pre-existing DB without root_path column via ALTER TABLE', () => {

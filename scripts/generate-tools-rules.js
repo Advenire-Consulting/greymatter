@@ -16,6 +16,14 @@ const REGION_TO_FLAG = {
   'doc-layer': 'doc_layer',
 };
 
+// Mutually exclusive region pairs gated by a single flag.
+// Entry format: { flagName: [keepWhenTrue, keepWhenFalse] }
+// When config[flagName] === true, keep the first region and strip the second.
+// When false or unset, keep the second and strip the first.
+const EXCLUSIVE_REGIONS = {
+  mcp_server: ['mcp', 'cli-fallback'],
+};
+
 function getPluginRoot() {
   return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 }
@@ -34,28 +42,50 @@ function getOutputPath() {
 
 // Strip `<!-- region:NAME -->` ... `<!-- endregion -->` blocks whose flag is disabled.
 // Preserves blocks whose region is not mapped to a flag.
+// Uses a skip stack to handle nesting: if a parent region is stripped, all
+// child regions are stripped regardless of their own flag state.
 function stripDisabledRegions(content, config) {
+  // Build reverse lookup: regionName → { flag, keepWhen }
+  // keepWhen: true = keep when config[flag] === true; false = keep when not true.
+  const exclusiveLookup = {};
+  for (const [flag, [whenTrue, whenFalse]] of Object.entries(EXCLUSIVE_REGIONS)) {
+    exclusiveLookup[whenTrue] = { flag, keepWhen: true };
+    exclusiveLookup[whenFalse] = { flag, keepWhen: false };
+  }
+
   const lines = content.split('\n');
   const out = [];
-  let skip = false;
+  // Stack of booleans: true = this region level is actively stripping.
+  // The top of the stack reflects the effective skip state (inherits parent strip).
+  const skipStack = [];
   const regionStart = /^<!--\s*region:([a-zA-Z0-9_-]+)\s*-->\s*$/;
   const regionEnd = /^<!--\s*endregion\s*-->\s*$/;
+
+  function isCurrentlySkipping() {
+    return skipStack.length > 0 && skipStack[skipStack.length - 1];
+  }
 
   for (const line of lines) {
     const startMatch = line.match(regionStart);
     if (startMatch) {
       const region = startMatch[1];
-      const flag = REGION_TO_FLAG[region];
-      // Disable only if the region maps to a flag AND the flag is explicitly false.
-      skip = !!(flag && config[flag] === false);
-      // Drop the region marker line whether we're stripping or not.
-      continue;
+      let shouldStrip;
+      if (exclusiveLookup[region]) {
+        const { flag, keepWhen } = exclusiveLookup[region];
+        shouldStrip = (config[flag] === true) !== keepWhen;
+      } else {
+        const flag = REGION_TO_FLAG[region];
+        shouldStrip = !!(flag && config[flag] === false);
+      }
+      // If a parent region is already stripping, this child also strips.
+      skipStack.push(isCurrentlySkipping() || shouldStrip);
+      continue; // Drop the region marker line.
     }
     if (regionEnd.test(line)) {
-      skip = false;
-      continue;
+      skipStack.pop();
+      continue; // Drop the endregion marker line.
     }
-    if (!skip) out.push(line);
+    if (!isCurrentlySkipping()) out.push(line);
   }
   return out.join('\n');
 }
@@ -85,9 +115,10 @@ function writeCachedHash(hash) {
 // Compute a composite hash over the source file AND the config flags that drive stripping.
 // If either changes, regeneration is required.
 function computeInputHash(sourceBuf, config) {
-  const flagState = Object.values(REGION_TO_FLAG)
-    .map(flag => `${flag}=${config[flag] === false ? '0' : '1'}`)
-    .join('|');
+  const flagState = [
+    ...Object.values(REGION_TO_FLAG).map(flag => `${flag}=${config[flag] === false ? '0' : '1'}`),
+    ...Object.keys(EXCLUSIVE_REGIONS).map(flag => `${flag}=${config[flag] === true ? '1' : '0'}`),
+  ].join('|');
   return sha256(Buffer.concat([sourceBuf, Buffer.from(flagState)]));
 }
 
@@ -149,4 +180,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { generate, stripDisabledRegions, resolvePluginRoot, REGION_TO_FLAG };
+module.exports = { generate, stripDisabledRegions, resolvePluginRoot, REGION_TO_FLAG, EXCLUSIVE_REGIONS };
