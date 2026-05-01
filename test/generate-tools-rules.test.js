@@ -185,7 +185,7 @@ describe('hook integration: mcp_server config key flows to generate', () => {
       '<!-- region:mcp -->',
       'mcp output',
       '<!-- endregion -->',
-      '<!-- region:cli-fallback -->',
+      '<!-- region:cli-mcp-paralleled -->',
       'cli output',
       '<!-- endregion -->',
     ].join('\n'));
@@ -200,7 +200,7 @@ describe('hook integration: mcp_server config key flows to generate', () => {
 
 // ── EXCLUSIVE_REGIONS — mcp_server flag ───────────────────────────────────────
 
-describe('EXCLUSIVE_REGIONS — mcp_server / cli-fallback pair', () => {
+describe('EXCLUSIVE_REGIONS — mcp_server / cli-mcp-paralleled pair', () => {
   let pluginRoot, dataDir, outputPath, hashPath;
 
   beforeEach(() => {
@@ -217,7 +217,7 @@ describe('EXCLUSIVE_REGIONS — mcp_server / cli-fallback pair', () => {
     rmrf(path.dirname(outputPath));
   });
 
-  // recall is a top-level sibling (not nested inside cli-fallback) so the
+  // recall is a top-level sibling (not nested inside cli-mcp-paralleled) so the
   // existing REGION_TO_FLAG behavior is verifiably independent of EXCLUSIVE_REGIONS.
   function mcpSource() {
     return [
@@ -228,9 +228,14 @@ describe('EXCLUSIVE_REGIONS — mcp_server / cli-fallback pair', () => {
       'mcp content',
       '<!-- endregion -->',
       '',
-      '<!-- region:cli-fallback -->',
-      '## CLI Fallback',
+      '<!-- region:cli-mcp-paralleled -->',
+      '## CLI Paralleled',
       'cli content',
+      '<!-- endregion -->',
+      '',
+      '<!-- region:cli-only -->',
+      '## CLI Only',
+      'cli-only content',
       '<!-- endregion -->',
       '',
       '<!-- region:recall -->',
@@ -241,48 +246,56 @@ describe('EXCLUSIVE_REGIONS — mcp_server / cli-fallback pair', () => {
     ].join('\n');
   }
 
-  it('mcp_server: true — keeps mcp, strips cli-fallback, keeps recall when enabled', () => {
+  it('mcp_server: true — keeps mcp, strips cli-mcp-paralleled, keeps cli-only and recall', () => {
     writeSource(pluginRoot, mcpSource());
     generate({ pluginRoot, dataDir, outputPath, hashPath, config: { mcp_server: true, conversation_recall: true } });
     const out = fs.readFileSync(outputPath, 'utf-8');
     assert.match(out, /## MCP Mode/);
     assert.match(out, /mcp content/);
-    assert.doesNotMatch(out, /## CLI Fallback/);
+    assert.doesNotMatch(out, /## CLI Paralleled/);
     assert.doesNotMatch(out, /cli content/);
+    assert.match(out, /## CLI Only/);
+    assert.match(out, /cli-only content/);
     assert.match(out, /## Recall/);
     assert.match(out, /recall content/);
   });
 
-  it('mcp_server: false — strips mcp, keeps cli-fallback and recall when enabled', () => {
+  it('mcp_server: false — strips mcp, keeps cli-mcp-paralleled, cli-only, and recall', () => {
     writeSource(pluginRoot, mcpSource());
     generate({ pluginRoot, dataDir, outputPath, hashPath, config: { mcp_server: false, conversation_recall: true } });
     const out = fs.readFileSync(outputPath, 'utf-8');
     assert.doesNotMatch(out, /## MCP Mode/);
     assert.doesNotMatch(out, /mcp content/);
-    assert.match(out, /## CLI Fallback/);
+    assert.match(out, /## CLI Paralleled/);
     assert.match(out, /cli content/);
+    assert.match(out, /## CLI Only/);
+    assert.match(out, /cli-only content/);
     assert.match(out, /## Recall/);
     assert.match(out, /recall content/);
   });
 
-  it('mcp_server unset — same as false: strips mcp, keeps cli-fallback', () => {
+  it('mcp_server unset — same as false: strips mcp, keeps cli-mcp-paralleled and cli-only', () => {
     writeSource(pluginRoot, mcpSource());
     generate({ pluginRoot, dataDir, outputPath, hashPath, config: { conversation_recall: true } });
     const out = fs.readFileSync(outputPath, 'utf-8');
     assert.doesNotMatch(out, /## MCP Mode/);
     assert.doesNotMatch(out, /mcp content/);
-    assert.match(out, /## CLI Fallback/);
+    assert.match(out, /## CLI Paralleled/);
     assert.match(out, /cli content/);
+    assert.match(out, /## CLI Only/);
+    assert.match(out, /cli-only content/);
   });
 
-  it('mcp_server: true, conversation_recall: false — mcp kept, cli-fallback+recall both stripped', () => {
+  it('mcp_server: true, conversation_recall: false — mcp kept, cli-mcp-paralleled+recall stripped, cli-only kept', () => {
     writeSource(pluginRoot, mcpSource());
     generate({ pluginRoot, dataDir, outputPath, hashPath, config: { mcp_server: true, conversation_recall: false } });
     const out = fs.readFileSync(outputPath, 'utf-8');
     assert.match(out, /## MCP Mode/);
     assert.match(out, /mcp content/);
-    assert.doesNotMatch(out, /## CLI Fallback/);
+    assert.doesNotMatch(out, /## CLI Paralleled/);
     assert.doesNotMatch(out, /cli content/);
+    assert.match(out, /## CLI Only/);
+    assert.match(out, /cli-only content/);
     assert.doesNotMatch(out, /## Recall/);
     assert.doesNotMatch(out, /recall content/);
   });
@@ -292,7 +305,7 @@ describe('EXCLUSIVE_REGIONS — mcp_server / cli-fallback pair', () => {
       '<!-- region:mcp -->',
       'mcp content',
       '<!-- endregion -->',
-      '<!-- region:cli-fallback -->',
+      '<!-- region:cli-mcp-paralleled -->',
       'cli content',
       '<!-- endregion -->',
     ].join('\n'));

@@ -23,41 +23,73 @@ The greymatter MCP server is active. Use the structured tools your client expose
 The CLI surface is still installed and functional; this region intentionally omits flag vocabulary because the MCP tool catalog already carries it.
 <!-- endregion -->
 
-<!-- region:cli-fallback -->
-Spatial awareness and long-term memory for code navigation and project history.
-All commands run from your workspace directory.
-
-**Default routing:** When you need to understand code — what files exist, what they do,
-what depends on what, what the schema looks like — route through these tools before
-falling back to Grep/Glob/Read. They return structured, token-efficient results built
-from indexed data.
-
-<!-- region:core -->
+<!-- region:cli-mcp-paralleled -->
 ## Graph Navigation (~150 tokens)
 
     node $PLUGIN_ROOT/scripts/query.js <command>
 
-| Command | What it does |
-|---------|-------------|
-| `--reorient [project]` | **Check first (alongside `--map`)** — recent sessions, decision terms, and files touched per project. No arg: list all projects with session context. |
-| `--recent [N]` | Last N sessions globally (default 2), ordered by start time. Use when the user references conversations by count — "last session", "the session before that", "a couple sessions ago" — rather than by project. Cross-project sessions listed once with every project tagged. |
-| `--map <project> [path]` | **Check first** — project directory map showing what each file does |
-| `--find <identifier>` | Code identifiers across all projects with line numbers |
-| `--structure <file> --project <p>` | Function/class/interface/type definitions with line numbers |
-| `--body <file> <name> --project <p>` | Extract a named function/definition body — saves a Read call |
-| `--blast-radius <file> --project <p>` | What imports it, what it imports |
-| `--flow <file> --project <p>` | Everything flowing in/out of a file |
-| `--trace <identifier> [--project <p>]` | Follow a value — where set, who reads it, what it calls |
-| `--schema [--project <p>]` | Database table structures |
-| `--lookup <file> --project <p>` | Exports, routes, db refs, sensitivity |
-| `--labels <file> [--all] [--project <p>]` | List heuristic labels for nodes in the file, by line, term, category, and descriptors. `--all` includes stale labels (marked `[stale]`). |
-| `--list-projects` | Browse all known projects and their recorded root paths. Shows `(not recorded — rescan to register root)` for projects scanned before root tracking landed. |
-| `--exclusions <project>` | Print the resolved exclusion policy for a project — every pattern with its source, plus sample paths excluded. See [`path-exclusion.md`](path-exclusion.md). |
+Flags below have direct MCP parallels — prefer the MCP tool when MCP mode is active.
+
+| Command | What it does | MCP parallel |
+|---------|-------------|--------------|
+| `--reorient [project]` | **Check first (alongside `--map`)** — recent sessions, decision terms, and files touched per project. No arg: list all projects with session context. | `get_project_overview` (richer) |
+| `--map <project> [path]` | **Check first** — project directory map showing what each file does | `get_project_overview` |
+| `--find <identifier>` | Code identifiers across all projects with line numbers | `find_identifier` |
+| `--body <file> <name> --project <p>` | Extract a named function/definition body — saves a Read call | `get_node_bundle` |
+| `--blast-radius <file> --project <p>` | What imports it, what it imports | `query_blast_radius` |
+| `--labels <file> [--all] [--project <p>]` | List heuristic labels for nodes in the file, by line, term, category, and descriptors. `--all` includes stale labels (marked `[stale]`). | `get_label_coverage` |
+| `--list-projects` | Browse all known projects and their recorded root paths. | `get_status` |
 
 **Token-saving rule:** When the user asks you to work on a project you haven't touched
 this session, run `--reorient <project>` for recent activity (sessions, decisions, files
 touched) and `--map <project>` for current structure. Only read individual files after
 those two orientation moves tell you which ones matter.
+
+## Content Search — Grep (~variable tokens)
+
+    node $PLUGIN_ROOT/scripts/grep.js <pattern> [options]
+
+| Option | What it does |
+|--------|-------------|
+| `--context N` / `-C N` | Lines of context around each match (default: 3) |
+| `--project <name>` | Filter to one project (substring match) |
+| `--max-per-file N` | Cap matches shown per file (default: 20) |
+
+Project-aware grep returning matches with surrounding context in one call. MCP parallel: `grep_project`.
+
+## What Answers What — MCP-paralleled
+
+| Question | Tool |
+|----------|------|
+| "What was recently done in <project>?" / "Where did we leave off on <project>?" | `--reorient <project>` |
+| "What's in this project?" / "What does each file do?" | `--map <project>` |
+| "What calls this function?" | `--find <identifier>` |
+| "What depends on this?" | `--blast-radius <file>` |
+| "Show me this function's code" | `--body <file> <name>` |
+| "Where is this string/pattern used?" | `grep.js <pattern>` |
+
+## Combined Recipes — MCP-paralleled
+
+| Scenario | Sequence |
+|----------|----------|
+| "Can I safely wipe or rename this file?" | `--blast-radius <file>` (code consumers) THEN `grep.js <filename>` (textual contracts in commands/, README, plans). Missing the second step misses silent tripwires. |
+| "Orient in a project you haven't touched this session" | `--reorient <project>` (recent sessions + decisions) + `--map <project>` (current structure). The pair gives both the *why* of recent work and the *what* of current state in ~300 tokens. Read individual files only after those two. |
+<!-- endregion -->
+
+<!-- region:cli-only -->
+## Graph Navigation — CLI-only flags
+
+    node $PLUGIN_ROOT/scripts/query.js <command>
+
+| Command | What it does |
+|---------|-------------|
+| `--recent [N]` | Last N sessions globally (default 2), ordered by start time. Use when the user references conversations by count — "last session", "the session before that", "a couple sessions ago" — rather than by project. Cross-project sessions listed once with every project tagged. |
+| `--structure <file> --project <p>` | Function/class/interface/type definitions with line numbers |
+| `--flow <file> --project <p>` | Everything flowing in/out of a file |
+| `--trace <identifier> [--project <p>]` | Follow a value — where set, who reads it, what it calls |
+| `--schema [--project <p>]` | Database table structures (parsed from source `.sql` at scan time) |
+| `--lookup <file> --project <p>` | Exports, routes, db refs, sensitivity |
+| `--exclusions <project>` | Print the resolved exclusion policy for a project — every pattern with its source, plus sample paths excluded. See [`path-exclusion.md`](path-exclusion.md). |
 
 ## Scan
 
@@ -72,25 +104,13 @@ those two orientation moves tell you which ones matter.
 Full project scan — builds graph.db from source files. Run once after install,
 then the post-tool-use hook keeps graph.db current on every edit.
 
-<!-- endregion -->
+## Schema Scout
 
-<!-- region:search -->
-## Content Search (~variable tokens)
+    node $PLUGIN_ROOT/scripts/schema-scout.js [--project <path>]
 
-Project-aware search returning matches with surrounding context in one call.
-Use these instead of Grep+Read cycles.
+Walks a project root, finds all `.db`/`.sqlite` files, and writes markdown docs of each database's tables, columns, foreign keys, and indexes to `<project>/schemas/`. Reads **live** runtime DB state — distinct from `query.js --schema`, which reads schema nodes parsed from source `.sql` files at scan time.
 
-### Grep
-
-    node $PLUGIN_ROOT/scripts/grep.js <pattern> [options]
-
-| Option | What it does |
-|--------|-------------|
-| `--context N` / `-C N` | Lines of context around each match (default: 3) |
-| `--project <name>` | Filter to one project (substring match) |
-| `--max-per-file N` | Cap matches shown per file (default: 20) |
-
-### Classify
+## Classify
 
     node $PLUGIN_ROOT/scripts/classify.js --inline "label1=pattern1" "label2=pattern2" [options]
     node $PLUGIN_ROOT/scripts/classify.js <config.json> [options]
@@ -103,8 +123,6 @@ Use these instead of Grep+Read cycles.
 
 Pattern variant audit with direction detection — categorizes every match by variant.
 Use for migration audits, convention checks, routing analysis.
-
-<!-- endregion -->
 
 <!-- region:recall -->
 ## Conversation Recall (~150 tokens search, ~6K read)
@@ -184,41 +202,36 @@ By default, `--chunk-content` and `--dispatch` emit just the semantic sections �
 - **Standing-rules preamble** — a workflow-rules block prepended to every chunk (don't commit, don't restart services, observations-file instructions). Enable via `spec_check.preamble: true` in `~/.claude/greymatter/config.json`, or pass `--preamble` on a single invocation. Pass `--no-preamble` to force it off when config has it on.
 - **External command-log append** — `--dispatch` can append one `Read <path> and execute it.` line per chunk to an external file (clipboard-window integration, etc.). Enable via `spec_check.command_log_path: "/abs/path"` in config, or pass `--command-log <path>`. Pass `--command-log=` (empty value) to disable for one call.
 
-## What Answers What
+## What Answers What — CLI-only
+
+These questions don't have a single MCP-tool answer; reach for the CLI.
 
 | Question | Tool |
 |----------|------|
 | "Last session?" / "a couple sessions ago?" / "the session before that?" | `--recent [N]` |
-| "What was recently done in <project>?" / "Where did we leave off on <project>?" | `--reorient <project>` |
-| "What's in this project?" / "What does each file do?" | `--map <project>` |
-| "What calls this function?" | `--find <identifier>` |
 | "What does this file export?" | `--lookup <file>` |
-| "What depends on this?" | `--blast-radius <file>` |
-| "What's the DB schema?" | `--schema` |
+| "What's the DB schema?" (from source) | `--schema` |
+| "What's the live runtime DB schema?" | `schema-scout.js` |
 | "What functions are in this file?" | `--structure <file>` |
-| "Show me this function's code" | `--body <file> <name>` |
 | "How does data flow through this file?" | `--flow <file>` |
 | "Where is a value set and who reads it?" | `--trace <identifier>` |
-| "Where is this string/pattern used?" | `grep.js <pattern>` |
 | "How much code uses pattern A vs B?" | `classify.js --inline "A=..." "B=..."` |
 | "What did we decide about X?" | `search.js` + `read-window.js` |
 | "Which source files drifted away from their tests?" | `test-alerts.js --project <name>` (or `/test-map`) |
 
-## Combined Recipes
+## Combined Recipes — CLI-only
 
-The single-tool table above answers narrow questions. Real investigations
-combine tools. The code graph tracks imports; it does NOT track textual
-contracts — slash commands shelling out by flag name, README examples,
-spec references, plan docs. Those are caught by `grep.js`. Treat them as
-first-class dependents.
+Real investigations combine tools. The code graph tracks imports; it does NOT
+track textual contracts — slash commands shelling out by flag name, README
+examples, spec references, plan docs. Those are caught by `grep.js`. Treat
+them as first-class dependents. Recipes below all reach for at least one
+CLI-only tool — paralleled-only recipes live in the MCP region above.
 
 | Scenario | Sequence |
 |----------|----------|
-| "Can I safely wipe or rename this file?" | `--blast-radius <file>` (code consumers) THEN `grep.js <filename>` (textual contracts in commands/, README, plans). Missing the second step misses silent tripwires. |
 | "Where is this method actually called?" | `grep.js <methodName>` — `--trace` is thin on method call-sites; it shows definitions and file-level edges, not every call expression. Use `--trace` to locate the definition, `grep.js` to enumerate call sites. |
 | "Recover a past decision" | Ladder: `search.js` → `--digest` (~200 tok) → `--decision N` (~500-1K) → `--focus L-L` (~6K) → `--full`. Escalate only when the tier below is insufficient. |
 | "Audit a migration's progress" | `classify.js --inline "old=regex1" "new=regex2"` — percentage split plus direction tags ([client]/[server]/[config]/[reference]). |
-| "Orient in a project you haven't touched this session" | `--reorient <project>` (recent sessions + decisions) + `--map <project>` (current structure). The pair gives both the *why* of recent work and the *what* of current state in ~300 tokens. Read individual files only after those two. |
 | "Understand the full blast radius of a load-bearing script" | `--blast-radius` + `--flow` + `grep.js <filename>` together. The code graph shows wiring; grep reveals the markdown/command/README contracts the graph doesn't track. |
 
 ## When Standard Tools Are Shorter

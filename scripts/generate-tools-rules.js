@@ -21,7 +21,7 @@ const REGION_TO_FLAG = {
 // When config[flagName] === true, keep the first region and strip the second.
 // When false or unset, keep the second and strip the first.
 const EXCLUSIVE_REGIONS = {
-  mcp_server: ['mcp', 'cli-fallback'],
+  mcp_server: ['mcp', 'cli-mcp-paralleled'],
 };
 
 function getPluginRoot() {
