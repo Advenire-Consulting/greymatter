@@ -169,6 +169,130 @@ You don't call this machinery yourself — it all runs from the shared scan driv
 
 ---
 
+## labelDetectors
+
+Heuristic detectors let your extractor tag graph nodes with semantic labels — what role a function plays, not just what it is. Detectors run at scan time (and again on edit via the post-tool-use hook) and write to the `code_labels` table. The feature is unconditional: if your extractor exports `labelDetectors`, they run.
+
+### Required export
+
+Add `labelDetectors` alongside `extensions` and `extract`:
+
+```js
+module.exports = { extensions, extract, testPairs, labelDetectors };
+```
+
+A missing `labelDetectors` export is non-fatal — the registry logs "no detectors loaded" and continues. A malformed detector (missing required field, or `category` outside the controlled vocabulary) causes the registry to reject it at load time and abort the scan with a clear error.
+
+### Detector definition shape
+
+`labelDetectors` is an array of detector objects:
+
+```js
+const labelDetectors = [
+  {
+    id: 'express-middleware',   // unique within this extractor; namespaced to <extractor-id>.<id> in storage
+    category: 'middleware',     // must be from the controlled vocabulary below
+    defaultTerm: 'middleware',  // stored as `term` when detect() does not return a term override
+    detect(node, ctx) {
+      // node: { name, type, line, file, body, metadata_json }
+      //   body — extracted body text (same as --body output), or null if the node has no body
+      // ctx:  { project, filePath, content, ast }
+      //   content — full file text
+      //   ast     — parsed AST if the extractor produced one, otherwise undefined
+
+      // Return null if no match. Return a result object on match:
+      return {
+        term: 'auth middleware',  // optional — overrides defaultTerm when present
+        descriptors: ['express', 'auth'],  // optional soft tags
+        confidence: 0.85,         // required — clamped to [0.0, 1.0]
+      };
+    },
+  },
+];
+```
+
+### Controlled vocabulary for `category`
+
+| Category | When to use |
+|---|---|
+| `middleware` | Function in a request-processing chain |
+| `route-handler` | Endpoint that responds to a specific path/verb |
+| `data-access` | Function or call that reads/writes the database |
+| `auth-step` | Credential check, token issuance, session validation |
+| `validation` | Input shape or constraint enforcement |
+| `transaction-boundary` | Begin/commit/rollback or transactional wrapper |
+| `template` | View/render/template emission |
+| `background-task` | Queue worker, scheduled job, async dispatcher |
+| `ipc-boundary` | Cross-process or cross-service call site |
+| `error-handler` | Catch-block dispatcher, error middleware |
+
+New categories require a doc update and reviewer sign-off. Do not invent a category if the existing ones don't fit — that is signal the detector covers too narrow or too broad a slice.
+
+### `detect(node, ctx)` contract
+
+- **Synchronous** — no async, no I/O, no network calls.
+- **Must not throw** — return `null` on unexpected input; the runner wraps calls in try/catch and treats throws as null returns. One bad detector must not break a scan.
+- **Return `null`** if the node is not a match.
+- **Return a result object** on match: `{ term?, descriptors?, confidence }`.
+  - `term` (optional string) — overrides `defaultTerm` when present.
+  - `descriptors` (optional string[]) — soft tags rendered in brackets, e.g. `[express, request]`.
+  - `confidence` (required number) — float in `[0.0, 1.0]`. Values outside this range are clamped with a warning.
+
+### Stored `detector_id`
+
+The registry namespaces each detector's `id` when writing to `code_labels`:
+
+```
+<extractor-id>.<detector.id>
+// e.g.  js.express-middleware
+```
+
+The inner `id` on the detector object is short and unique within the extractor. The value persisted to the database is always the namespaced form.
+
+### Example — two detectors
+
+```js
+const labelDetectors = [
+  // Trivial detector: matches by parameter count alone
+  {
+    id: 'three-param-fn',
+    category: 'middleware',
+    defaultTerm: 'middleware',
+    detect(node) {
+      if (!node.body) return null;
+      // Crude heuristic: 3-arity functions are often middleware
+      const match = node.body.match(/^[^(]*\(([^)]*)\)/);
+      if (!match) return null;
+      const params = match[1].split(',').filter(p => p.trim());
+      if (params.length !== 3) return null;
+      return { confidence: 0.6 };
+    },
+  },
+
+  // Richer detector: descriptors + term override
+  {
+    id: 'bcrypt-verify',
+    category: 'auth-step',
+    defaultTerm: 'credential verification',
+    detect(node) {
+      if (!node.body) return null;
+      if (!/bcrypt(?:js)?\.compare\(/.test(node.body)) return null;
+      return {
+        term: 'bcrypt comparison',
+        descriptors: ['bcrypt', 'password'],
+        confidence: 0.95,
+      };
+    },
+  },
+];
+```
+
+### Relationship to `testPairs`
+
+`labelDetectors` and `testPairs` are independent extractor-export contracts. Neither references the other. Adding one does not affect the other, and omitting either is non-fatal.
+
+---
+
 ## Auto-discovery
 
 The registry finds extractors by listing files in `extractors/` and requiring each one. There's no registration file to edit. Rules:

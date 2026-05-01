@@ -11,6 +11,7 @@ const {
   formatMap, formatFind, formatBlastRadius, formatStructure,
   formatFlow, formatTrace, formatSchema,
   formatReorient, formatReorientList, formatRecent,
+  renderLabels,
 } = require('../scripts/query');
 
 const queryScript = path.join(__dirname, '../scripts/query.js');
@@ -287,5 +288,68 @@ describe('query.js --body CLI', () => {
     fs.writeFileSync(f, 'const config = {\n  fetchData: someValue,\n};\n');
     const out = runBody(f, 'fetchData');
     assert.ok(out.includes('not found'), 'plain key:value (not function/arrow) should not match');
+  });
+});
+
+describe('renderLabels', () => {
+  let db, dbPath;
+
+  beforeEach(() => {
+    dbPath = tmpDbPath();
+    db = new GraphDB(dbPath);
+    const nodeA = db.upsertNode({ project: 'p', file: 'auth/middleware.js', name: 'authMiddleware', type: 'function', line: 12 });
+    const nodeB = db.upsertNode({ project: 'p', file: 'auth/middleware.js', name: 'staleFn', type: 'function', line: 34 });
+    db.upsertLabel({ nodeId: nodeA, detectorId: 'js.express-middleware', term: 'middleware', category: 'middleware', descriptors: ['express', 'request'], confidence: 0.9, source: 'heuristic' });
+    db.upsertLabel({ nodeId: nodeB, detectorId: 'js.express-middleware', term: 'middleware', category: 'middleware', descriptors: [], confidence: 0.8, source: 'heuristic' });
+    // Mark nodeB's label stale via raw SQL
+    db.db.prepare('UPDATE code_labels SET is_stale = 1 WHERE node_id = ?').run(nodeB);
+  });
+
+  afterEach(() => {
+    db.close();
+    try { fs.unlinkSync(dbPath); } catch {}
+    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
+  });
+
+  // Task 5.1 — fresh-only default
+  it('default (includeStale=false) shows only fresh labels', () => {
+    const out = renderLabels({ db, file: 'auth/middleware.js', project: 'p', includeStale: false });
+    assert.ok(out.includes('authMiddleware'), 'fresh label node should appear');
+    assert.ok(!out.includes('staleFn'), 'stale label node should be omitted');
+    assert.ok(!out.includes('[stale]'), 'no stale marker in default mode');
+    assert.ok(out.includes('[express, request]'), 'descriptors rendered');
+    assert.ok(out.includes('middleware'), 'category rendered');
+  });
+
+  it('returns "no labels" message when file has no nodes', () => {
+    const out = renderLabels({ db, file: 'auth/other.js', project: 'p', includeStale: false });
+    assert.ok(out.includes('no labels'));
+  });
+
+  it('returns "no labels" message when nodes exist but none have fresh labels', () => {
+    // Only nodeB has a label and it is stale; use a fresh db with only a stale node
+    const p2 = tmpDbPath();
+    const db2 = new GraphDB(p2);
+    const n = db2.upsertNode({ project: 'p', file: 'x.js', name: 'fn', type: 'function', line: 1 });
+    db2.upsertLabel({ nodeId: n, detectorId: 'js.t', term: 't', category: 'middleware', descriptors: [], confidence: 0.5, source: 'heuristic' });
+    db2.db.prepare('UPDATE code_labels SET is_stale = 1 WHERE node_id = ?').run(n);
+    const out = renderLabels({ db: db2, file: 'x.js', project: 'p', includeStale: false });
+    db2.close();
+    try { fs.unlinkSync(p2); } catch {}
+    assert.ok(out.includes('no labels'));
+  });
+
+  // Task 5.2 — --all includes stale
+  it('includeStale=true includes stale labels with [stale] marker', () => {
+    const out = renderLabels({ db, file: 'auth/middleware.js', project: 'p', includeStale: true });
+    assert.ok(out.includes('authMiddleware'), 'fresh node should appear');
+    assert.ok(out.includes('staleFn'), 'stale node should appear with --all');
+    assert.ok(out.includes('[stale]'), '[stale] marker present on stale labels');
+  });
+
+  it('output header line is the file path', () => {
+    const out = renderLabels({ db, file: 'auth/middleware.js', project: 'p', includeStale: false });
+    assert.ok(out.startsWith('auth/middleware.js'), 'first line is the file path');
   });
 });

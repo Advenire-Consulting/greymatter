@@ -5,6 +5,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/typescript');
+const { runDetectorsForNode } = require('../lib/extractor-registry');
 
 describe('TypeScript Extractor', () => {
   it('has correct extensions', () => {
@@ -76,5 +77,37 @@ describe('TypeScript Extractor', () => {
       );
       assert.deepEqual(sources, []);
     });
+  });
+});
+
+describe('TS labelDetectors — re-exported from JS', () => {
+  it('labelDetectors array exists and contains express-middleware', () => {
+    assert.ok(Array.isArray(extractor.labelDetectors), 'labelDetectors should be an array');
+    assert.ok(
+      extractor.labelDetectors.some(d => d.id === 'express-middleware'),
+      'should include express-middleware'
+    );
+  });
+
+  it('detects express-middleware pattern via runDetectorsForNode', () => {
+    const content = 'function authMiddleware(req, res, next) { next(); }';
+    const node = { name: 'authMiddleware', type: 'function', line: 1, body: content };
+    const ctx = { project: 'p', filePath: 'app.ts', content };
+    const labels = runDetectorsForNode(extractor, node, ctx);
+    const label = labels.find(l => l.detectorId === 'express-middleware');
+    assert.ok(label, 'should detect express-middleware on TS extractor');
+    assert.equal(label.category, 'middleware');
+  });
+
+  it('extractBody is exported and returns function body', () => {
+    const content = [
+      'function authMiddleware(req, res, next) {',
+      '  next();',
+      '}',
+    ].join('\n');
+    const body = extractor.extractBody(content, { line: 1, name: 'authMiddleware' });
+    assert.ok(body, 'extractBody should return a string');
+    assert.ok(body.includes('authMiddleware'));
+    assert.ok(body.includes('next()'));
   });
 });

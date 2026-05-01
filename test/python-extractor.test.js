@@ -5,6 +5,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/python');
+const { runDetectorsForNode } = require('../lib/extractor-registry');
 
 describe('Python Extractor', () => {
   it('has correct extension', () => {
@@ -135,5 +136,138 @@ def standalone_function():
       );
       assert.deepEqual(sources, []);
     });
+  });
+});
+
+describe('Python extractBody', () => {
+  it('captures top-level def body up to next outdent', () => {
+    const SOURCE = [
+      '',
+      'def login(request):',
+      "    if request.method == 'POST':",
+      '        return jsonify({})',
+      '    return None',
+      '',
+      'def helper():',
+      '    return 1',
+    ].join('\n');
+    const body = extractor.extractBody(SOURCE, { line: 2, name: 'login' });
+    assert.ok(body, 'should return a string');
+    assert.ok(body.startsWith('def login(request):'));
+    assert.ok(body.includes('return jsonify({})'));
+    assert.ok(!body.includes('def helper'));
+  });
+
+  it('captures nested method body (indented past class keyword)', () => {
+    const source = [
+      'class Foo:',
+      '    def method(self):',
+      '        return 1',
+      '',
+      '    def other(self):',
+      '        return 2',
+    ].join('\n');
+    const body = extractor.extractBody(source, { line: 2, name: 'method' });
+    assert.ok(body.startsWith('    def method(self):'));
+    assert.ok(!body.includes('def other'));
+  });
+
+  it('trims trailing blank lines', () => {
+    const source = 'def f():\n    return 1\n\n\ndef g():\n    pass\n';
+    const body = extractor.extractBody(source, { line: 1, name: 'f' });
+    assert.ok(!body.endsWith('\n'), 'trailing newlines trimmed');
+    assert.ok(body.includes('return 1'));
+  });
+
+  it('returns null when node.line is past EOF', () => {
+    assert.equal(extractor.extractBody('def f():\n    pass\n', { line: 999, name: 'f' }), null);
+  });
+});
+
+describe('Python labelDetectors — flask-route', () => {
+  function runPy(source, defLine, name) {
+    const node = { name, type: 'function', line: defLine };
+    const ctx = { project: 'p', filePath: 'app.py', content: source };
+    return runDetectorsForNode(extractor, node, ctx);
+  }
+
+  it('detects @app.route decorator', () => {
+    const source = "@app.route('/login', methods=['POST'])\ndef login():\n    return jsonify({})\n";
+    const labels = runPy(source, 2, 'login');
+    const label = labels.find(l => l.detectorId === 'flask-route');
+    assert.ok(label, 'should detect flask-route');
+    assert.equal(label.category, 'route-handler');
+    assert.deepEqual(label.descriptors, ['flask']);
+  });
+
+  it('detects @bp.route decorator', () => {
+    const source = "@bp.route('/users')\ndef list_users():\n    return []\n";
+    const labels = runPy(source, 2, 'list_users');
+    const label = labels.find(l => l.detectorId === 'flask-route');
+    assert.ok(label, 'should detect blueprint route');
+  });
+
+  it('detects with stacked decorators', () => {
+    const source = "@require_auth\n@app.route('/admin')\ndef admin():\n    return None\n";
+    const labels = runPy(source, 3, 'admin');
+    const label = labels.find(l => l.detectorId === 'flask-route');
+    assert.ok(label, 'should detect through stacked decorators');
+  });
+
+  it('does not detect plain function', () => {
+    const source = 'def helper():\n    return None\n';
+    const labels = runPy(source, 1, 'helper');
+    const label = labels.find(l => l.detectorId === 'flask-route');
+    assert.ok(!label, 'should not detect plain function');
+  });
+});
+
+describe('Python labelDetectors — django-view', () => {
+  it('detects function with request param in views.py', () => {
+    const source = 'def index(request):\n    return render(request, "index.html")\n';
+    const node = { name: 'index', type: 'function', line: 1 };
+    const labels = runDetectorsForNode(extractor, node, {
+      project: 'p', filePath: 'app/views.py', content: source,
+    });
+    const label = labels.find(l => l.detectorId === 'django-view');
+    assert.ok(label, 'should detect django view');
+    assert.equal(label.category, 'route-handler');
+  });
+
+  it('does not detect same signature in utils.py', () => {
+    const source = 'def index(request):\n    return None\n';
+    const node = { name: 'index', type: 'function', line: 1 };
+    const labels = runDetectorsForNode(extractor, node, {
+      project: 'p', filePath: 'app/utils.py', content: source,
+    });
+    const label = labels.find(l => l.detectorId === 'django-view');
+    assert.ok(!label, 'should not detect in utils.py');
+  });
+});
+
+describe('Python labelDetectors — sqlalchemy-query', () => {
+  it('detects session.query()', () => {
+    const content = 'def get_users(session):\n    return session.query(User).all()\n';
+    const node = { name: 'get_users', type: 'function', line: 1, body: content };
+    const labels = runDetectorsForNode(extractor, node, { project: 'p', filePath: 'db.py', content });
+    const label = labels.find(l => l.detectorId === 'sqlalchemy-query');
+    assert.ok(label, 'should detect session.query');
+    assert.equal(label.category, 'data-access');
+  });
+
+  it('detects Model.query chain', () => {
+    const content = 'def get_active():\n    return User.query.filter_by(active=True).all()\n';
+    const node = { name: 'get_active', type: 'function', line: 1, body: content };
+    const labels = runDetectorsForNode(extractor, node, { project: 'p', filePath: 'db.py', content });
+    const label = labels.find(l => l.detectorId === 'sqlalchemy-query');
+    assert.ok(label, 'should detect Model.query chain');
+  });
+
+  it('does not detect bare query() call', () => {
+    const content = 'def helper():\n    return query("SELECT 1")\n';
+    const node = { name: 'helper', type: 'function', line: 1, body: content };
+    const labels = runDetectorsForNode(extractor, node, { project: 'p', filePath: 'db.py', content });
+    const label = labels.find(l => l.detectorId === 'sqlalchemy-query');
+    assert.ok(!label, 'should not detect bare query()');
   });
 });

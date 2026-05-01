@@ -6,10 +6,11 @@ const crypto = require('crypto');
 const os = require('os');
 const { GraphDB } = require('../lib/graph-db');
 const { MemoryDB } = require('../lib/memory-db');
-const { ExtractorRegistry } = require('../lib/extractor-registry');
+const { ExtractorRegistry, runDetectorsForNode } = require('../lib/extractor-registry');
 const { SEED_EDGE_TYPES } = require('../lib/edge-types');
 const { loadConfig } = require('../lib/config');
 const { buildProjectContext } = require('../lib/reorientation');
+const bodyHash = require('../lib/body-hash');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.svelte-kit', 'dist', 'build', 'coverage']);
 const SKIP_EXTENSIONS = new Set(['.db', '.db-wal', '.db-shm']);
@@ -55,8 +56,9 @@ function resolveImportPath(sourceFile, importTarget, projectDir) {
 // extractFiles — the core two-pass extraction engine.
 // forceFiles: optional Set of project-relative paths to re-extract even if the hash is unchanged.
 // When null/undefined, behaves identically to the original scanProject (hash-based incremental).
-function extractFiles({ db, project, rootPath, forceFiles = null }) {
-  const registry = new ExtractorRegistry();
+// extractorsDir: optional path to a custom extractors directory (used in tests).
+function extractFiles({ db, project, rootPath, forceFiles = null, extractorsDir }) {
+  const registry = extractorsDir ? new ExtractorRegistry(extractorsDir) : new ExtractorRegistry();
   const forceSet = forceFiles ? new Set(forceFiles) : null;
 
   // Seed baseline edge types
@@ -69,6 +71,8 @@ function extractFiles({ db, project, rootPath, forceFiles = null }) {
   let filesSkipped = 0;
   let nodesCreated = 0;
   let edgesCreated = 0;
+  let labelsWritten = 0;
+  const detectorsFired = new Set();
 
   // fileNodeMaps: projectRelPath → Map(nodeName → nodeId)
   // Built during first pass for all files (both changed and unchanged).
@@ -118,10 +122,37 @@ function extractFiles({ db, project, rootPath, forceFiles = null }) {
 
     // Insert new nodes; build name→id map for this file
     const nameMap = new Map();
+    const fileExt = path.extname(relPath);
+    const extractorMod = registry.getExtractor(fileExt);
     for (const node of extracted.nodes) {
       const id = db.upsertNode(node);
       if (!nameMap.has(node.name)) nameMap.set(node.name, id);
       nodesCreated++;
+
+      // Compute and store body_hash; follow-up UPDATE acceptable for v1 simplicity
+      const body = extractorMod && typeof extractorMod.extractBody === 'function'
+        ? extractorMod.extractBody(content, node)
+        : null;
+      node.body = body; // in-memory transient; not persisted to DB
+      const hash = bodyHash(body);
+      db.setNodeBodyHash(id, hash);
+
+      // Run heuristic detectors and write labels
+      const nodeLabels = runDetectorsForNode(extractorMod || {}, node, { project, filePath: relPath, content });
+      for (const label of nodeLabels) {
+        db.upsertLabel({
+          nodeId: id,
+          detectorId: label.detectorId,
+          term: label.term,
+          category: label.category,
+          descriptors: label.descriptors,
+          confidence: label.confidence,
+          source: 'heuristic',
+          bodyHashAtLabel: hash,
+        });
+        labelsWritten++;
+        detectorsFired.add(label.detectorId);
+      }
     }
     fileNodeMaps.set(relPath, nameMap);
     filesToProcess.push({ relPath, hash, extracted });
@@ -223,7 +254,7 @@ function extractFiles({ db, project, rootPath, forceFiles = null }) {
     db.setFileHash(project, relPath, hash);
   }
 
-  return { filesScanned, filesSkipped, nodesCreated, edgesCreated };
+  return { filesScanned, filesSkipped, nodesCreated, edgesCreated, labelsWritten, detectorCount: detectorsFired.size };
 }
 
 function scanProject(projectDir, projectName, graphDb) {
@@ -426,6 +457,9 @@ function main() {
     const stats = scanProject(dir, name, db);
     db.setProjectRoot(name, dir);
     process.stdout.write(`  ${stats.filesScanned} scanned, ${stats.filesSkipped} skipped, ${stats.nodesCreated} nodes, ${stats.edgesCreated} edges\n`);
+    if (stats.labelsWritten > 0) {
+      process.stdout.write(`  labels: ${name} — ${stats.labelsWritten} labels written via ${stats.detectorCount} detectors\n`);
+    }
     totalScanned += stats.filesScanned;
     totalSkipped += stats.filesSkipped;
     totalNodes += stats.nodesCreated;

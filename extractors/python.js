@@ -155,4 +155,82 @@ const testPairs = {
   },
 };
 
-module.exports = { extensions: ['.py'], extract, testPairs };
+function extractBody(content, node) {
+  if (!node || typeof node.line !== 'number') return null;
+  const lines = content.split('\n');
+  const startIdx = node.line - 1;
+  if (startIdx < 0 || startIdx >= lines.length) return null;
+
+  const startIndent = lines[startIdx].search(/\S/);
+  if (startIndent < 0) return null;
+
+  let endIdx = startIdx;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') { endIdx = i; continue; }
+    if (/^\s*#/.test(line)) { endIdx = i; continue; }
+    const indent = line.search(/\S/);
+    if (indent <= startIndent) break;
+    endIdx = i;
+  }
+  // Trim trailing blank/comment-only lines
+  while (endIdx > startIdx) {
+    const t = lines[endIdx].trim();
+    if (t === '' || t.startsWith('#')) endIdx--;
+    else break;
+  }
+  return lines.slice(startIdx, endIdx + 1).join('\n');
+}
+
+const labelDetectors = [
+  {
+    id: 'flask-route',
+    category: 'route-handler',
+    defaultTerm: 'route handler',
+    detect: (node, ctx) => {
+      if (!ctx?.content || typeof node.line !== 'number') return null;
+      const lines = ctx.content.split('\n');
+      for (let i = node.line - 2; i >= 0; i--) {
+        const trimmed = lines[i].trim();
+        if (trimmed === '' || trimmed.startsWith('#')) continue;
+        if (/^@(app|bp)\.route\b/.test(trimmed)) {
+          return { confidence: 0.95, descriptors: ['flask'] };
+        }
+        if (trimmed.startsWith('@')) continue;
+        break;
+      }
+      return null;
+    },
+  },
+  {
+    id: 'django-view',
+    category: 'route-handler',
+    defaultTerm: 'view',
+    detect: (node, ctx) => {
+      if (!ctx?.filePath || !ctx?.content) return null;
+      if (typeof node.line !== 'number') return null;
+      const inViews = /(?:^|\/)views\.py$|\/views\//.test(ctx.filePath);
+      if (!inViews) return null;
+      const startLine = ctx.content.split('\n')[node.line - 1] || '';
+      if (!/def\s+\w+\s*\(\s*request\b/.test(startLine)) return null;
+      return { confidence: 0.9, descriptors: ['django'] };
+    },
+  },
+  {
+    id: 'sqlalchemy-query',
+    category: 'data-access',
+    defaultTerm: 'ORM query',
+    detect: (node) => {
+      if (!node.body) return null;
+      if (/\b\w+\.(query|execute)\s*\(/.test(node.body)) {
+        return { confidence: 0.9, descriptors: ['sqlalchemy'] };
+      }
+      if (/\b[A-Z]\w*\.query\.\w+/.test(node.body)) {
+        return { confidence: 0.9, descriptors: ['sqlalchemy', 'model'] };
+      }
+      return null;
+    },
+  },
+];
+
+module.exports = { extensions: ['.py'], extract, testPairs, labelDetectors, extractBody };

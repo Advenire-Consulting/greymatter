@@ -305,4 +305,9 @@ const testPairs = {
   },
 };
 
-module.exports = { extensions: ['.ts', '.tsx'], extract, testPairs };
+const { labelDetectors: jsLabelDetectors, extractBody: jsExtractBody } = require('./javascript');
+
+const labelDetectors = jsLabelDetectors;
+const extractBody = jsExtractBody;
+
+module.exports = { extensions: ['.ts', '.tsx'], extract, testPairs, labelDetectors, extractBody };

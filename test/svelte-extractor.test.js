@@ -5,6 +5,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const extractor = require('../extractors/svelte');
+const { runDetectorsForNode } = require('../lib/extractor-registry');
 
 describe('Svelte Extractor', () => {
   it('has correct extension', () => {
@@ -93,5 +94,97 @@ describe('Svelte Extractor', () => {
       );
       assert.deepEqual(sources, []);
     });
+  });
+});
+
+describe('Svelte extractBody', () => {
+  const SOURCE = [
+    '<script>',
+    '  export async function load({ fetch }) {',
+    '    return { data: await fetch("/api").then(r => r.json()) };',
+    '  }',
+    '</script>',
+    '',
+    '<h1>Hello</h1>',
+  ].join('\n');
+
+  it('extracts function body from inside <script> block', () => {
+    // load is at absolute file line 2 (lineOffset=0, scriptLine index 1 → line 0+1+1=2)
+    const body = extractor.extractBody(SOURCE, { line: 2, name: 'load' });
+    assert.ok(body, 'should return body string');
+    assert.ok(body.includes('export async function load'));
+    assert.ok(body.trimEnd().endsWith('}'));
+    assert.equal(body.split('\n').length, 3, 'three-line body');
+  });
+
+  it('returns null for node.line outside the script block', () => {
+    const body = extractor.extractBody(SOURCE, { line: 7, name: 'unknown' });
+    assert.equal(body, null);
+  });
+
+  it('returns null when there is no <script> block', () => {
+    const body = extractor.extractBody('<h1>Hello</h1>', { line: 1, name: 'x' });
+    assert.equal(body, null);
+  });
+});
+
+describe('Svelte labelDetectors — svelte-load', () => {
+  const FIXTURE = "export async function load({ fetch }) { return { data: await fetch('/api').then(r => r.json()) }; }";
+
+  function runSvelte(filePath) {
+    const node = { name: 'load', type: 'function', line: 1, body: FIXTURE };
+    const ctx = { project: 'p', filePath, content: FIXTURE };
+    return runDetectorsForNode(extractor, node, ctx);
+  }
+
+  it('detects load in +page.js', () => {
+    const label = runSvelte('src/routes/+page.js').find(l => l.detectorId === 'svelte-load');
+    assert.ok(label, 'should detect in +page.js');
+    assert.equal(label.category, 'data-access');
+  });
+
+  it('detects load in +page.server.js', () => {
+    const label = runSvelte('src/routes/+page.server.js').find(l => l.detectorId === 'svelte-load');
+    assert.ok(label, 'should detect in +page.server.js');
+  });
+
+  it('detects load in +layout.js', () => {
+    const label = runSvelte('+layout.js').find(l => l.detectorId === 'svelte-load');
+    assert.ok(label, 'should detect in +layout.js');
+  });
+
+  it('detects load in +layout.server.ts', () => {
+    const label = runSvelte('+layout.server.ts').find(l => l.detectorId === 'svelte-load');
+    assert.ok(label, 'should detect in +layout.server.ts');
+  });
+
+  it('does not detect load in regular.js', () => {
+    const label = runSvelte('regular.js').find(l => l.detectorId === 'svelte-load');
+    assert.ok(!label, 'should not detect in regular.js');
+  });
+});
+
+describe('Svelte labelDetectors — svelte-server-endpoint', () => {
+  function runEndpoint(name, filePath) {
+    const content = `export async function ${name}({ url }) { return new Response('ok'); }`;
+    const node = { name, type: 'function', line: 1, body: content };
+    const ctx = { project: 'p', filePath, content };
+    return runDetectorsForNode(extractor, node, ctx);
+  }
+
+  it('detects GET in +server.js', () => {
+    const label = runEndpoint('GET', 'src/routes/+server.js').find(l => l.detectorId === 'svelte-server-endpoint');
+    assert.ok(label, 'should detect GET endpoint');
+    assert.equal(label.category, 'route-handler');
+  });
+
+  it('detects POST in +server.ts', () => {
+    const label = runEndpoint('POST', 'src/routes/+server.ts').find(l => l.detectorId === 'svelte-server-endpoint');
+    assert.ok(label, 'should detect POST endpoint');
+  });
+
+  it('does not detect GET in regular.js', () => {
+    const label = runEndpoint('GET', 'regular.js').find(l => l.detectorId === 'svelte-server-endpoint');
+    assert.ok(!label, 'should not detect in regular.js');
   });
 });

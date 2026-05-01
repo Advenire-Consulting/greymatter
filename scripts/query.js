@@ -189,6 +189,33 @@ function formatReorientList(contexts) {
   return lines.join('\n');
 }
 
+function renderLabels({ db, file, project, includeStale }) {
+  const where = project
+    ? 'WHERE file = ? AND project = ?'
+    : 'WHERE file = ?';
+  const params = project ? [file, project] : [file];
+  const nodes = db.db.prepare(`
+    SELECT id, name, line FROM nodes ${where} ORDER BY line ASC
+  `).all(...params);
+
+  if (nodes.length === 0) return `${file} — no labels\n`;
+
+  const lines = [`${file}`];
+  let any = false;
+  for (const node of nodes) {
+    const labels = db.getLabels(node.id, { multi: true, all: includeStale });
+    if (labels.length === 0) continue;
+    any = true;
+    for (const l of labels) {
+      const desc = l.descriptors_json ? `[${JSON.parse(l.descriptors_json).join(', ')}]` : '';
+      const stale = l.is_stale ? ' [stale]' : '';
+      lines.push(`  L${String(node.line).padEnd(4)} ${node.name.padEnd(28)} ${l.category.padEnd(20)} ${desc}${stale}`);
+    }
+  }
+  if (!any) return `${file} — no labels\n`;
+  return lines.join('\n') + '\n';
+}
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 function flag(args, name) {
@@ -212,7 +239,7 @@ function main() {
   const projectFlag = flag(args, '--project');
 
   if (!command) {
-    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--list-projects|--resolve|--reorient|--recent> [args]\n');
+    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--labels|--list-projects|--resolve|--reorient|--recent> [args]\n');
     process.stderr.write('Common flags: --project <name>  --db <path to graph.db>  --memory-db <path to memory.db> (for --resolve)\n');
     process.exit(1);
   }
@@ -398,6 +425,12 @@ function main() {
       const entries = getRecentSessions(memDbPath, dbPath, n);
       process.stdout.write(formatRecent(entries) + '\n');
 
+    } else if (command === '--labels') {
+      const file = positional(args, '--labels');
+      if (!file) { process.stderr.write('--labels requires a file path\n'); process.exit(1); }
+      const includeStale = args.includes('--all');
+      process.stdout.write(renderLabels({ db, file, project: projectFlag, includeStale }));
+
     } else {
       process.stderr.write(`Unknown command: ${command}\n`);
       process.exit(1);
@@ -409,4 +442,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList, formatRecent };
+module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList, formatRecent, renderLabels };

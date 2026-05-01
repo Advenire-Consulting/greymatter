@@ -144,6 +144,57 @@ describe('GraphDB', () => {
     assert.equal(db.getProjectRoot('p'), '/tmp/p');
   });
 
+  it('nodes table has body_hash column (TEXT, nullable)', () => {
+    const cols = db.db.prepare('PRAGMA table_info(nodes)').all();
+    const col = cols.find(c => c.name === 'body_hash');
+    assert.ok(col, 'body_hash column missing from nodes');
+    assert.equal(col.type, 'TEXT');
+    assert.equal(col.notnull, 0);
+  });
+
+  it('code_labels table exists with all 14 columns', () => {
+    const cols = db.db.prepare('PRAGMA table_info(code_labels)').all();
+    const names = cols.map(c => c.name);
+    const expected = ['id', 'node_id', 'detector_id', 'term', 'category',
+      'descriptors_json', 'role_summary', 'confidence', 'source', 'model_id',
+      'body_hash_at_label', 'is_stale', 'created_at', 'updated_at'];
+    for (const col of expected) {
+      assert.ok(names.includes(col), `Missing column: ${col}`);
+    }
+    assert.equal(names.length, 14);
+  });
+
+  it('code_labels has the five required indexes', () => {
+    const indexes = db.db.prepare('PRAGMA index_list(code_labels)').all();
+    const names = indexes.map(i => i.name);
+    for (const idx of ['idx_code_labels_node', 'idx_code_labels_node_source',
+        'idx_code_labels_stale', 'idx_code_labels_category', 'idx_code_labels_unique']) {
+      assert.ok(names.includes(idx), `Missing index: ${idx}`);
+    }
+  });
+
+  it('code_labels CHECK constraint rejects invalid source values', () => {
+    const nodeId = db.upsertNode({ project: 'p', file: 'chk.js', name: 'fn', type: 'function', line: 1 });
+    assert.throws(
+      () => db.db.prepare(
+        'INSERT INTO code_labels (node_id, detector_id, term, category, confidence, source) VALUES (?,?,?,?,?,?)'
+      ).run(nodeId, 'x', 'y', 'middleware', 0.9, 'external'),
+      /constraint/i
+    );
+  });
+
+  it('code_labels FK cascade: deleting a node removes its labels', () => {
+    const nodeId = db.upsertNode({ project: 'p', file: 'casc.js', name: 'fn', type: 'function', line: 1 });
+    db.db.prepare(
+      'INSERT INTO code_labels (node_id, detector_id, term, category, confidence, source) VALUES (?,?,?,?,?,?)'
+    ).run(nodeId, 'test.det', 'middleware', 'middleware', 0.9, 'heuristic');
+    const before = db.db.prepare('SELECT COUNT(*) as c FROM code_labels WHERE node_id = ?').get(nodeId).c;
+    assert.equal(before, 1);
+    db.deleteFileNodes('p', 'casc.js');
+    const after = db.db.prepare('SELECT COUNT(*) as c FROM code_labels WHERE node_id = ?').get(nodeId).c;
+    assert.equal(after, 0);
+  });
+
   it('migrates pre-existing DB without root_path column via ALTER TABLE', () => {
     db.close();
     try { fs.unlinkSync(dbPath); } catch {}

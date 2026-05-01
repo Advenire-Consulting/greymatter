@@ -299,4 +299,92 @@ const testPairs = {
   },
 };
 
-module.exports = { extensions: ['.js', '.mjs', '.cjs'], extract, testPairs };
+function extractBody(content, node) {
+  if (!node || typeof node.line !== 'number') return null;
+  const lines = content.split('\n');
+  const startIdx = node.line - 1;
+  if (startIdx < 0 || startIdx >= lines.length) return null;
+
+  let depth = 0;
+  let foundOpen = false;
+  let endIdx = startIdx;
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i];
+    const opens = (line.match(/\{/g) || []).length;
+    const closes = (line.match(/\}/g) || []).length;
+    depth += opens - closes;
+    if (opens > 0) foundOpen = true;
+    if (foundOpen && depth <= 0) { endIdx = i; break; }
+  }
+  if (!foundOpen) {
+    return lines[startIdx];
+  }
+  return lines.slice(startIdx, endIdx + 1).join('\n');
+}
+
+const labelDetectors = [
+  {
+    id: 'express-middleware',
+    category: 'middleware',
+    defaultTerm: 'middleware',
+    detect: (node) => {
+      if (!node.body) return null;
+      const sig = /(?:function\s*\w*\s*|=\s*|\b)\(\s*([a-zA-Z_$][\w$]*)\s*,\s*([a-zA-Z_$][\w$]*)\s*,\s*([a-zA-Z_$][\w$]*)\s*\)/;
+      const m = sig.exec(node.body);
+      if (!m) return null;
+      const [, a, b, c] = m;
+      const named = a === 'req' && b === 'res' && c === 'next';
+      return {
+        confidence: named ? 0.95 : 0.7,
+        descriptors: named ? ['express', 'request'] : ['3-arity'],
+      };
+    },
+  },
+  {
+    id: 'express-route-handler',
+    category: 'route-handler',
+    defaultTerm: 'route handler',
+    detect: (node, ctx) => {
+      if (!node.body || !ctx?.content) return null;
+      const sig = /\(\s*([a-zA-Z_$][\w$]*)\s*,\s*([a-zA-Z_$][\w$]*)\s*\)/;
+      if (!sig.test(node.body)) return null;
+      const verbs = '(get|post|put|patch|delete|all|use)';
+      const re = new RegExp(`\\bapp\\.${verbs}\\s*\\(\\s*['"\`][^'"\`]+['"\`]\\s*,\\s*${node.name}\\b`);
+      if (!re.test(ctx.content)) return null;
+      return { confidence: 0.95, descriptors: ['express'] };
+    },
+  },
+  {
+    id: 'parameterized-sql',
+    category: 'data-access',
+    defaultTerm: 'parameterized query',
+    detect: (node) => {
+      if (!node.body) return null;
+      const re = /\.(prepare|run|get|all)\s*\(\s*['"`]([^'"`]*\?[^'"`]*)['"`]/;
+      if (!re.test(node.body)) return null;
+      return { confidence: 0.9, descriptors: ['sqlite', 'parameterized'] };
+    },
+  },
+  {
+    id: 'bcrypt-verify',
+    category: 'auth-step',
+    defaultTerm: 'credential verification',
+    detect: (node) => {
+      if (!node.body) return null;
+      if (!/\bbcrypt(?:js?)?\.compare\s*\(/.test(node.body)) return null;
+      return { confidence: 0.95, descriptors: ['bcrypt', 'password'] };
+    },
+  },
+  {
+    id: 'safe-json-parse',
+    category: 'validation',
+    defaultTerm: 'safe JSON parse',
+    detect: (node) => {
+      if (!node.body) return null;
+      if (!/\bsafeJsonParse\s*\(/.test(node.body)) return null;
+      return { confidence: 0.9, descriptors: ['json', '_shared'] };
+    },
+  },
+];
+
+module.exports = { extensions: ['.js', '.mjs', '.cjs'], extract, testPairs, labelDetectors, extractBody };

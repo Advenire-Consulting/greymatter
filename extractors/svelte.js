@@ -164,4 +164,52 @@ const testPairs = {
   },
 };
 
-module.exports = { extensions: ['.svelte'], extract, testPairs };
+function extractBody(content, node) {
+  if (!node || typeof node.line !== 'number') return null;
+  const { script, lineOffset } = extractScriptBlock(content);
+  if (!script) return null;
+  const scriptLineIdx = node.line - lineOffset - 1;
+  const scriptLines = script.split('\n');
+  if (scriptLineIdx < 0 || scriptLineIdx >= scriptLines.length) return null;
+
+  let depth = 0;
+  let foundOpen = false;
+  let endIdx = scriptLineIdx;
+  for (let i = scriptLineIdx; i < scriptLines.length; i++) {
+    const line = scriptLines[i];
+    const opens = (line.match(/\{/g) || []).length;
+    const closes = (line.match(/\}/g) || []).length;
+    depth += opens - closes;
+    if (opens > 0) foundOpen = true;
+    if (foundOpen && depth <= 0) { endIdx = i; break; }
+  }
+  if (!foundOpen) return scriptLines[scriptLineIdx];
+  return scriptLines.slice(scriptLineIdx, endIdx + 1).join('\n');
+}
+
+const labelDetectors = [
+  {
+    id: 'svelte-load',
+    category: 'data-access',
+    defaultTerm: 'load function',
+    detect: (node, ctx) => {
+      if (!node.name || node.name !== 'load') return null;
+      if (!ctx?.filePath) return null;
+      if (!/\+(page|layout)(\.server)?\.(js|ts)$/.test(ctx.filePath)) return null;
+      return { confidence: 0.95, descriptors: ['sveltekit'] };
+    },
+  },
+  {
+    id: 'svelte-server-endpoint',
+    category: 'route-handler',
+    defaultTerm: 'server endpoint',
+    detect: (node, ctx) => {
+      if (!node.name) return null;
+      if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(node.name)) return null;
+      if (!ctx?.filePath?.endsWith('+server.js') && !ctx?.filePath?.endsWith('+server.ts')) return null;
+      return { confidence: 0.95, descriptors: ['sveltekit', node.name.toLowerCase()] };
+    },
+  },
+];
+
+module.exports = { extensions: ['.svelte'], extract, testPairs, labelDetectors, extractBody };
