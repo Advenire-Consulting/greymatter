@@ -11,6 +11,7 @@ const { SEED_EDGE_TYPES } = require('../lib/edge-types');
 const { loadConfig } = require('../lib/config');
 const { buildProjectContext } = require('../lib/reorientation');
 const bodyHash = require('../lib/body-hash');
+const { loadPolicy, isExcluded } = require('../lib/exclusion');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.svelte-kit', 'dist', 'build', 'coverage']);
 const SKIP_EXTENSIONS = new Set(['.db', '.db-wal', '.db-shm']);
@@ -20,7 +21,7 @@ function hashContent(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
-function walkDir(dir, projectDir, registry, results) {
+function walkDir(dir, projectDir, registry, results, policy) {
   if (!results) results = [];
   let entries;
   try {
@@ -31,9 +32,10 @@ function walkDir(dir, projectDir, registry, results) {
   }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
+    if (policy && isExcluded(fullPath, policy)) continue;
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      walkDir(fullPath, projectDir, registry, results);
+      walkDir(fullPath, projectDir, registry, results, policy);
     } else {
       const ext = path.extname(entry.name);
       if (SKIP_EXTENSIONS.has(ext)) continue;
@@ -57,16 +59,17 @@ function resolveImportPath(sourceFile, importTarget, projectDir) {
 // forceFiles: optional Set of project-relative paths to re-extract even if the hash is unchanged.
 // When null/undefined, behaves identically to the original scanProject (hash-based incremental).
 // extractorsDir: optional path to a custom extractors directory (used in tests).
-function extractFiles({ db, project, rootPath, forceFiles = null, extractorsDir }) {
+function extractFiles({ db, project, rootPath, forceFiles = null, extractorsDir, config }) {
   const registry = extractorsDir ? new ExtractorRegistry(extractorsDir) : new ExtractorRegistry();
   const forceSet = forceFiles ? new Set(forceFiles) : null;
+  const policy = loadPolicy(rootPath, config);
 
   // Seed baseline edge types
   for (const et of SEED_EDGE_TYPES) {
     db.registerEdgeType(et);
   }
 
-  const files = walkDir(rootPath, rootPath, registry);
+  const files = walkDir(rootPath, rootPath, registry, undefined, policy);
   let filesScanned = 0;
   let filesSkipped = 0;
   let nodesCreated = 0;
@@ -84,6 +87,9 @@ function extractFiles({ db, project, rootPath, forceFiles = null, extractorsDir 
   for (const absPath of files) {
     const relPath = path.relative(rootPath, absPath);
     const forced = forceSet !== null && forceSet.has(relPath);
+
+    // Defense in depth: never extract a forced-but-excluded file
+    if (isExcluded(absPath, policy)) continue;
 
     let content;
     try {

@@ -49,8 +49,29 @@ Safety policy applied before tool use. Each category accepts: `block` (refuse), 
 
 | Setting | Default | What it does | What you lose if changed |
 |---------|---------|--------------|--------------------------|
-| `extraction.skip_directories` | `["node_modules", ".git", "dist", "build", ".next", ".svelte-kit"]` | Directory names the scanner skips wholesale. | Removing entries includes vendored/generated code in the graph (slower scans, noisier results). |
 | `extraction.max_file_size_kb` | `500` | Files larger than this are skipped during extraction. | Raising includes large generated files (minified bundles, data blobs) that rarely yield useful symbols. |
+
+> **Removed:** `extraction.skip_directories` was retired in favor of the unified exclusion policy (see below). If your `config.json` still has it, port the values to `exclusion.extra_patterns` — the old key is no longer read. Existing user values are preserved on disk by additive migration but have no effect.
+
+## Exclusion
+
+Files and directories excluded from scanning, indexing, and MCP read-time results. Resolved from four sources merged with gitignore-style precedence (built-ins → `.gitignore` → `.greymatterignore` → `extra_patterns`); later sources can negate earlier matches via `!pattern`. See `docs/path-exclusion.md` for the full reference.
+
+| Setting | Default | What it does | What you lose if changed |
+|---------|---------|--------------|--------------------------|
+| `exclusion.respect_gitignore` | `false` | When `true`, `.gitignore` files in the project tree contribute exclusion patterns. Off by default to preserve behavior on existing installs. | Enabling shrinks the indexed file set to match `git ls-files`. Recommended for most users; future versions may flip this default. |
+| `exclusion.respect_greymatterignore` | `true` | When `true`, a `.greymatterignore` file at the project root contributes exclusion patterns (same syntax as `.gitignore`). | Disabling means greymatter-specific exclusions are ignored even if the file exists. |
+| `exclusion.extra_patterns` | `[]` | Per-user-machine override patterns layered on top of the file-based sources. Highest precedence — can negate built-in or file-based excludes. | Use for one-off local exclusions you don't want to commit to a repo file. |
+
+## Redaction
+
+Content scrubbing applied at every byte-egress boundary (MCP body responses, LLM-bundle assembly, wiki rendering). Independent of file-level exclusion. See `docs/path-exclusion.md` for the rule library.
+
+| Setting | Default | What it does | What you lose if changed |
+|---------|---------|--------------|--------------------------|
+| `redaction.enabled` | `true` | Master switch for the redaction layer. When `false`, body content leaves greymatter unscrubbed. | Disabling removes a defense-in-depth layer; secrets in code comments may reach LLMs or MCP clients. |
+| `redaction.context_window_lines` | `5` | Proximity (in lines) used by the entropy-near-keyword rule to associate high-entropy strings with secret keywords. | Lowering reduces false positives but may miss tokens declared a few lines from their `SECRET=` declaration. |
+| `redaction.extra_patterns` | `[]` | User-supplied regex rules layered on top of the six built-in patterns. Each entry: `{ name, regex, replacement }`. | Use for project-specific secret formats (internal token prefixes, etc.) not covered by the defaults. |
 
 ## Maintenance
 

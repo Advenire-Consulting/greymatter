@@ -52,6 +52,7 @@ from indexed data.
 | `--lookup <file> --project <p>` | Exports, routes, db refs, sensitivity |
 | `--labels <file> [--all] [--project <p>]` | List heuristic labels for nodes in the file, by line, term, category, and descriptors. `--all` includes stale labels (marked `[stale]`). |
 | `--list-projects` | Browse all known projects and their recorded root paths. Shows `(not recorded — rescan to register root)` for projects scanned before root tracking landed. |
+| `--exclusions <project>` | Print the resolved exclusion policy for a project — every pattern with its source, plus sample paths excluded. See [`path-exclusion.md`](path-exclusion.md). |
 
 **Token-saving rule:** When the user asks you to work on a project you haven't touched
 this session, run `--reorient <project>` for recent activity (sessions, decisions, files

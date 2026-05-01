@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const { GraphDB } = require('../lib/graph-db');
 const { UnknownProjectError } = require('../lib/mcp/errors');
+const { isExcluded } = require('../lib/exclusion');
 
 const DEFAULT_DB = path.join(os.homedir(), '.claude', 'greymatter', 'graph.db');
 
@@ -49,10 +50,11 @@ function searchFile(filePath, regex, ctx, maxPerFile) {
  * @param {number} [options.context=3] - lines of context on each side
  * @param {number} [options.maxPerFile=20] - max matches per file
  * @param {string} [options.rootPath] - override project root (skips DB lookup)
+ * @param {object} [options.policy] - exclusion policy; excluded files are skipped
  * @returns {Array<{ file: string, matches: Array<{ line, before, match, after }> }>}
  */
 function grepProject(graphDb, project, pattern, options = {}) {
-  const { context = 3, maxPerFile = 20, rootPath: rootPathOpt } = options;
+  const { context = 3, maxPerFile = 20, rootPath: rootPathOpt, policy } = options;
 
   const fileRows = graphDb.db.prepare('SELECT file FROM file_hashes WHERE project = ?').all(project);
   if (fileRows.length === 0) {
@@ -71,6 +73,7 @@ function grepProject(graphDb, project, pattern, options = {}) {
   const results = [];
   for (const { file: relFile } of fileRows) {
     const absPath = path.join(root_path, relFile);
+    if (policy && isExcluded(absPath, policy)) continue;
     const matches = searchFile(absPath, regex, context, maxPerFile);
     if (matches.length > 0) results.push({ file: relFile, matches });
   }

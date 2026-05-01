@@ -80,6 +80,8 @@ Every setting, its default, and what you lose by disabling it lives in [`config/
 
 **Additive migration.** When a new default key ships (e.g., `test_alerts` added in April 2026), `loadConfig` detects that it's missing from your existing file and inserts it with the default value so it's visible and editable on disk. Your existing overrides are never modified and never removed. A one-time backup is written to `config.json.bak`, and a one-line stderr note names the keys that were added.
 
+**Path exclusion and redaction.** Sensitive files (secrets, build output, anything in `.gitignore`/`.greymatterignore`) are excluded at both scan-write and tool-read, and node bodies are redacted for credential-shaped strings before they leave the process. Full policy sources, precedence, and migration from `extraction.skip_directories` in [`docs/path-exclusion.md`](docs/path-exclusion.md).
+
 ## Commands
 
 - `/dopamine` — flag a behavioral moment (positive or negative); guided flow adds a weighted lesson.

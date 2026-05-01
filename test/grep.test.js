@@ -219,4 +219,14 @@ describe('grepProject library', () => {
       (e) => e instanceof UnknownProjectError && e.code === 'UNKNOWN_PROJECT'
     );
   });
+
+  it('options.policy filters excluded files from results', () => {
+    const { loadPolicy } = require('../lib/exclusion');
+    // extra_patterns excludes 'lib/' — only files under lib/ exist in this project
+    const policy = loadPolicy(root, { exclusion: { extra_patterns: ['lib/fileA.js'] } });
+    const results = grepProject(db, 'p1', 'verifyToken', { policy });
+    const files = results.map(r => r.file);
+    assert.ok(!files.includes('lib/fileA.js'), 'excluded file should not appear in results');
+    assert.ok(files.includes('lib/fileB.js'), 'included file should still appear');
+  });
 });

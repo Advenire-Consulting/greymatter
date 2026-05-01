@@ -78,6 +78,26 @@ function formatTrace(traceData, name) {
   return lines.join('\n');
 }
 
+function formatExclusions(policy, project, sampleMatches) {
+  const lines = [`[exclusions: ${project}]`];
+  lines.push(`respect_gitignore: ${policy.respectGitignore}`);
+  lines.push(`respect_greymatterignore: ${policy.respectGreymatterignore}`);
+  lines.push(`hash: ${policy.hash.slice(0, 12)}...`);
+  lines.push('');
+  lines.push(`patterns (${policy.patterns.length}):`);
+  for (const { pattern, source } of policy.patterns) {
+    lines.push(`  ${source.padEnd(18)} ${pattern}`);
+  }
+  if (sampleMatches.length > 0) {
+    lines.push('');
+    lines.push('sample matches (paths in project that this policy currently excludes):');
+    for (const f of sampleMatches.slice(0, 10)) {
+      lines.push(`  ${f}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 function formatStructure(definitions, file) {
   if (!definitions || definitions.length === 0) {
     return `(no definitions in ${file})`;
@@ -239,7 +259,7 @@ function main() {
   const projectFlag = flag(args, '--project');
 
   if (!command) {
-    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--labels|--list-projects|--resolve|--reorient|--recent> [args]\n');
+    process.stderr.write('Usage: query.js <--map|--find|--blast-radius|--flow|--trace|--structure|--schema|--labels|--list-projects|--resolve|--reorient|--recent|--exclusions> [args]\n');
     process.stderr.write('Common flags: --project <name>  --db <path to graph.db>  --memory-db <path to memory.db> (for --resolve)\n');
     process.exit(1);
   }
@@ -431,6 +451,25 @@ function main() {
       const includeStale = args.includes('--all');
       process.stdout.write(renderLabels({ db, file, project: projectFlag, includeStale }));
 
+    } else if (command === '--exclusions') {
+      const project = positional(args, '--exclusions') || projectFlag;
+      if (!project) { process.stderr.write('--exclusions requires a project name\n'); process.exit(1); }
+      const root = db.getProjectRoot(project);
+      if (!root) {
+        process.stderr.write(`No root recorded for project "${project}". Rescan to register root.\n`);
+        process.exit(1);
+      }
+      const { loadConfig } = require('../lib/config');
+      const { loadPolicy: _loadPolicy, isExcluded: _isExcluded } = require('../lib/exclusion');
+      let cfg;
+      try { cfg = loadConfig(); } catch { cfg = {}; }
+      const pol = _loadPolicy(root, cfg);
+      const fileRows = db.db.prepare('SELECT file FROM file_hashes WHERE project = ?').all(project);
+      const excluded = fileRows
+        .map(r => r.file)
+        .filter(f => _isExcluded(path.join(root, f), pol));
+      process.stdout.write(formatExclusions(pol, project, excluded) + '\n');
+
     } else {
       process.stderr.write(`Unknown command: ${command}\n`);
       process.exit(1);
@@ -442,4 +481,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList, formatRecent, renderLabels };
+module.exports = { formatMap, formatFind, formatBlastRadius, formatStructure, formatFlow, formatTrace, formatSchema, formatReorient, formatReorientList, formatRecent, renderLabels, formatExclusions };

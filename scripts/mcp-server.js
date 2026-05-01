@@ -30,9 +30,36 @@ const { TOOLS } = require('../lib/mcp/tools');
 const { PROMPTS } = require('../lib/mcp/prompts');
 const { McpError, GraphUnavailableError, BadRequestError } = require('../lib/mcp/errors');
 const { loadConfig } = require('../lib/config');
+const { loadPolicy } = require('../lib/exclusion');
 
 const DEFAULT_DB = path.join(os.homedir(), '.claude', 'greymatter', 'graph.db');
 const VERSION = '0.1.0';
+
+// Per-request policy cache — keyed by (projectRoot, source-file mtimes).
+// Invalidates automatically when .gitignore or .greymatterignore mtime changes.
+const policyCache = new Map();
+
+function getFileMtime(filePath) {
+  try { return fs.statSync(filePath).mtimeMs; } catch { return null; }
+}
+
+// Returns a project → policy resolver function with mtime-keyed caching.
+// Exported for testing.
+function makePolicyResolver(graphDb, config) {
+  return function resolvePolicy(project) {
+    const root = graphDb ? graphDb.getProjectRoot(project) : null;
+    if (!root) return null;
+    const mtimes = {
+      gitignore: getFileMtime(path.join(root, '.gitignore')),
+      greymatterignore: getFileMtime(path.join(root, '.greymatterignore')),
+    };
+    const key = JSON.stringify({ root, mtimes });
+    if (policyCache.has(key)) return policyCache.get(key);
+    const policy = loadPolicy(root, config);
+    policyCache.set(key, policy);
+    return policy;
+  };
+}
 
 async function main() {
   if (process.argv[2] === '--help' || process.stdout.isTTY) {
@@ -91,6 +118,7 @@ async function main() {
     graphDb,
     queries,
     grepProject: (project, pattern, opts) => grepProjectLib(graphDb, project, pattern, opts),
+    policy: makePolicyResolver(graphDb, config),
     serverInfo,
     dbError,
     dbPath,
@@ -184,7 +212,11 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch(err => {
-  process.stderr.write(`greymatter-mcp fatal: ${err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    process.stderr.write(`greymatter-mcp fatal: ${err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = { makePolicyResolver, policyCache };

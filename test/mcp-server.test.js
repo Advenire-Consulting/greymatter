@@ -458,3 +458,200 @@ describe('PROMPTS array', () => {
     }
   });
 });
+
+// ── Task 4.1: policy resolver ─────────────────────────────────────────────────
+
+describe('makePolicyResolver', () => {
+  const os2 = require('os');
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const { makePolicyResolver, policyCache } = require('../scripts/mcp-server');
+
+  it('returns null when project root is unknown', () => {
+    policyCache.clear();
+    const graphDb = { getProjectRoot: () => null };
+    const resolver = makePolicyResolver(graphDb, {});
+    assert.equal(resolver('unknownproj'), null);
+  });
+
+  it('returns stable hash on repeated calls when source files unchanged', () => {
+    const tmpDir = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'gm-pol-'));
+    policyCache.clear();
+    try {
+      fs2.writeFileSync(path2.join(tmpDir, '.gitignore'), 'dist/\n');
+      const graphDb = { getProjectRoot: () => tmpDir };
+      const resolver = makePolicyResolver(graphDb, {});
+      const pol1 = resolver('myproj');
+      const pol2 = resolver('myproj');
+      assert.equal(pol1.hash, pol2.hash);
+      assert.ok(pol1 === pol2, 'same object returned from cache');
+    } finally {
+      fs2.rmSync(tmpDir, { recursive: true, force: true });
+      policyCache.clear();
+    }
+  });
+
+  it('returns different policy hash when .gitignore content changes', () => {
+    const tmpDir = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'gm-pol-'));
+    policyCache.clear();
+    try {
+      fs2.writeFileSync(path2.join(tmpDir, '.gitignore'), 'dist/\n');
+      const graphDb = { getProjectRoot: () => tmpDir };
+      // Load policy with gitignore enabled so patterns are picked up
+      const pol1 = makePolicyResolver(graphDb, { exclusion: { respect_gitignore: true } })('myproj');
+
+      // Change .gitignore content — different patterns → different hash
+      fs2.writeFileSync(path2.join(tmpDir, '.gitignore'), 'dist/\nbuild/\n');
+      const now = new Date(Date.now() + 1000);
+      fs2.utimesSync(path2.join(tmpDir, '.gitignore'), now, now);
+      policyCache.clear();
+
+      const pol2 = makePolicyResolver(graphDb, { exclusion: { respect_gitignore: true } })('myproj');
+      assert.notEqual(pol1.hash, pol2.hash);
+    } finally {
+      fs2.rmSync(tmpDir, { recursive: true, force: true });
+      policyCache.clear();
+    }
+  });
+});
+
+// ── Task 4.2: get_node / get_node_bundle exclusion + redaction ────────────────
+
+describe('get_node exclusion and redaction', () => {
+  const tool = findTool('get_node');
+
+  it('returns excluded:true when queried file is excluded', () => {
+    const graphDb = { getProjectRoot: () => '/tmp/proj' };
+    const policy = (_proj) => ({
+      projectRoot: '/tmp/proj',
+      ignoreEngine: { ignores: (rel) => rel === 'production.env' },
+      hash: 'testhash',
+    });
+    const queries = { getNodeBundle: () => BUNDLE };
+    const result = tool.handler(
+      { project: 'p', file: 'production.env', name: 'X' },
+      { queries, graphDb, policy }
+    );
+    assert.equal(result.excluded, true);
+    assert.equal(result.file, 'production.env');
+    assert.ok(result.reason);
+  });
+
+  it('redacts aws key in body before returning', () => {
+    const awsBody = "aws_secret = 'AKIAIOSFODNN7EXAMPLE';";
+    const bundleWithSecret = { ...BUNDLE, body: awsBody };
+    const queries = { getNodeBundle: () => bundleWithSecret };
+    const result = tool.handler({ project: 'p', file: 'lib/auth.js', name: 'verifyToken' }, { queries });
+    assert.ok(result.body.includes('[REDACTED:aws_access_key]'), 'AWS key should be redacted');
+    assert.ok(!result.body.includes('AKIAIOSFODNN7EXAMPLE'), 'raw key should not appear');
+  });
+});
+
+describe('get_node_bundle exclusion and redaction', () => {
+  const tool = findTool('get_node_bundle');
+
+  it('returns excluded:true when queried file is excluded', () => {
+    const graphDb = { getProjectRoot: () => '/tmp/proj' };
+    const policy = () => ({
+      projectRoot: '/tmp/proj',
+      ignoreEngine: { ignores: (rel) => rel === 'production.env' },
+      hash: 'h',
+    });
+    const queries = { getNodeBundle: () => BUNDLE };
+    const result = tool.handler(
+      { project: 'p', file: 'production.env', name: 'X' },
+      { queries, graphDb, policy }
+    );
+    assert.equal(result.excluded, true);
+  });
+
+  it('redacts aws key in bundle body', () => {
+    const awsBody = "const key = 'AKIAIOSFODNN7EXAMPLE';";
+    const bundleWithSecret = {
+      ...BUNDLE,
+      body: awsBody,
+      outgoing: [],
+      incoming: [],
+    };
+    const queries = { getNodeBundle: () => ({ ...bundleWithSecret }) };
+    const result = tool.handler(
+      { project: 'p', file: 'lib/auth.js', name: 'verifyToken' },
+      { queries }
+    );
+    assert.ok(result.body.includes('[REDACTED:aws_access_key]'));
+    assert.ok(!result.body.includes('AKIAIOSFODNN7EXAMPLE'));
+  });
+
+  it('filters bundle edges pointing to excluded files', () => {
+    const bundleWithEdges = {
+      identifier: BUNDLE.identifier,
+      body: null,
+      labels: [],
+      outgoing: [
+        { kind: 'calls', target: 'safe', target_file: 'lib/safe.js', target_label: null },
+        { kind: 'calls', target: 'secret', target_file: 'production.env', target_label: null },
+      ],
+      incoming: [],
+    };
+    const graphDb = { getProjectRoot: () => '/tmp/proj' };
+    const policy = () => ({
+      projectRoot: '/tmp/proj',
+      ignoreEngine: { ignores: (rel) => rel === 'production.env' },
+      hash: 'h',
+    });
+    const queries = { getNodeBundle: () => ({ ...bundleWithEdges }) };
+    const result = tool.handler(
+      { project: 'p', file: 'lib/auth.js', name: 'verifyToken' },
+      { queries, graphDb, policy }
+    );
+    assert.equal(result.outgoing.length, 1);
+    assert.equal(result.outgoing[0].target, 'safe');
+  });
+});
+
+// ── Task 4.3: metadata primitives filter excluded paths ───────────────────────
+
+describe('find_identifier drops rows from excluded files', () => {
+  const tool = findTool('find_identifier');
+
+  it('filters results from excluded files when graphDb + policy provided', () => {
+    const nodes = [
+      { project: 'p', file: 'lib/auth.js', name: 'foo', type: 'function', line: 1 },
+      { project: 'p', file: 'production.env', name: 'foo', type: 'function', line: 2 },
+    ];
+    const graphDb = { getProjectRoot: (proj) => proj === 'p' ? '/tmp/proj' : null };
+    const policy = (_proj) => ({
+      projectRoot: '/tmp/proj',
+      ignoreEngine: { ignores: (rel) => rel === 'production.env' },
+      hash: 'h',
+    });
+    const queries = {
+      findNodes: () => nodes,
+      graphDb: { getProjectRoot: () => '/tmp/proj' },
+    };
+    const result = tool.handler({ name: 'foo' }, { queries, graphDb, policy });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].file, 'lib/auth.js');
+  });
+});
+
+describe('query_blast_radius returns excluded:true for excluded files', () => {
+  const tool = findTool('query_blast_radius');
+
+  it('returns excluded:true when queried file is excluded', () => {
+    const graphDb = { getProjectRoot: () => '/tmp/proj' };
+    const policy = () => ({
+      projectRoot: '/tmp/proj',
+      ignoreEngine: { ignores: (rel) => rel === 'production.env' },
+      hash: 'h',
+    });
+    const mockDb = { prepare: () => ({ get: () => ({ file: 'production.env' }), all: () => [] }) };
+    const queries = { graphDb: { db: mockDb } };
+    const result = tool.handler(
+      { project: 'p', file: 'production.env' },
+      { queries, graphDb, policy }
+    );
+    assert.equal(result.excluded, true);
+    assert.equal(result.file, 'production.env');
+  });
+});

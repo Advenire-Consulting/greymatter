@@ -4,7 +4,10 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { GraphDB } = require('../lib/graph-db');
+const { loadPolicy } = require('../lib/exclusion');
+const { reconcileProject } = require('../lib/reconcile');
 
 function tmpDbPath() {
   return path.join(__dirname, `test-graph-reconcile-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -97,5 +100,80 @@ describe('GraphDB reconcile helpers', () => {
     db.updateLastScanSha('new-proj', 'sha-abc');
     const state = db.getScanState('new-proj');
     assert.equal(state.last_scan_sha, 'sha-abc');
+  });
+
+  it('project_scan_state has exclusion_policy_hash and exclusion_purged_at columns', () => {
+    // Bare SELECT must not throw — the migration should have added the columns.
+    db.db.prepare('SELECT exclusion_policy_hash, exclusion_purged_at FROM project_scan_state LIMIT 0').all();
+  });
+
+  it('setExclusionState and getExclusionState round-trip', () => {
+    db.setExclusionState('p', 'abc123');
+    const state = db.getExclusionState('p');
+    assert.equal(state.exclusion_policy_hash, 'abc123');
+    assert.ok(state.exclusion_purged_at, 'exclusion_purged_at should be set');
+  });
+
+  it('setExclusionState updates an existing project_scan_state row without clobbering other columns', () => {
+    db.setProjectRoot('p', '/tmp/p');
+    db.upsertScanState('p', 'old-sha', 'incremental');
+    db.setExclusionState('p', 'hash-1');
+
+    const scan = db.getScanState('p');
+    assert.equal(scan.last_scan_sha, 'old-sha');
+    assert.equal(db.getProjectRoot('p'), '/tmp/p');
+    const excl = db.getExclusionState('p');
+    assert.equal(excl.exclusion_policy_hash, 'hash-1');
+  });
+
+  it('getExclusionState returns null for unknown project', () => {
+    assert.equal(db.getExclusionState('does-not-exist'), null);
+  });
+});
+
+describe('reconcileProject policy integration', () => {
+  let db, dbPath, tmpDir;
+
+  beforeEach(() => {
+    dbPath = tmpDbPath();
+    db = new GraphDB(dbPath);
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gm-reconcile-policy-'));
+  });
+
+  afterEach(() => {
+    db.close();
+    try { fs.unlinkSync(dbPath); } catch {}
+    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('purges excluded files and updates exclusion state when policy changes (Task 3.2)', () => {
+    // Setup: create directory structure with secrets/ that will be gitignored
+    fs.mkdirSync(path.join(tmpDir, 'secrets'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'secrets', 'x.js'), '// secret');
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), 'secrets/\n');
+    db.setProjectRoot('p', tmpDir);
+
+    // Seed a node for secrets/x.js as if a previous scan had included it
+    db.upsertNode({ project: 'p', file: 'secrets/x.js', name: 'x', type: 'module', line: 1 });
+
+    // Run with respect_gitignore: true — policy now excludes secrets/
+    const config = { exclusion: { respect_gitignore: true, extra_patterns: [], respect_greymatterignore: false } };
+    const result = reconcileProject({ db, project: 'p', rootPath: tmpDir, runExtraction: () => {}, config });
+
+    // purgeCounts should be present with files_purged > 0
+    assert.ok(result.purgeCounts, 'purgeCounts should be returned');
+    assert.ok(result.purgeCounts.files_purged > 0, 'should have purged at least one file');
+
+    // secrets/x.js node should be gone
+    const rows = db.db.prepare('SELECT * FROM nodes WHERE project = ? AND file = ?').all('p', 'secrets/x.js');
+    assert.equal(rows.length, 0, 'secrets/x.js should be purged from nodes');
+
+    // exclusion_policy_hash should match the new policy
+    const state = db.getExclusionState('p');
+    assert.ok(state, 'exclusion state should exist');
+    const policy = loadPolicy(tmpDir, config);
+    assert.equal(state.exclusion_policy_hash, policy.hash, 'exclusion_policy_hash should match new policy');
   });
 });

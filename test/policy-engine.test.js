@@ -173,6 +173,28 @@ describe('PolicyEngine', () => {
     assert.ok(r.categories.includes('high_blast_radius'));
   });
 
+  it('regression: excluded file paths never appear in nodes — policy-engine scope reduction (Task 3.4)', () => {
+    // production.env matches *.env in BUILTIN_SECRET_PATTERNS; even if an extractor were added,
+    // the scan layer's isExcluded check would prevent it from reaching nodes. This test guards
+    // against that invariant breaking: if a node ever appears for production.env, the policy
+    // enforcement in file-walker / scan is broken.
+    const os = require('os');
+    const fs = require('fs');
+    const tmpDir = fs.mkdtempSync(require('path').join(os.tmpdir(), 'gm-pe-reg-'));
+    try {
+      fs.writeFileSync(require('path').join(tmpDir, 'production.env'), 'SECRET=1');
+      fs.writeFileSync(require('path').join(tmpDir, 'app.js'), 'module.exports = {};');
+
+      const { extractFiles } = require('../scripts/scan');
+      extractFiles({ db, project: 'pe-reg', rootPath: tmpDir });
+
+      const rows = db.db.prepare('SELECT * FROM nodes WHERE project = ? AND file = ?').all('pe-reg', 'production.env');
+      assert.equal(rows.length, 0, 'production.env must never reach nodes — policy-engine scope reduction regression');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('precedence: block > ask > warn > inform when multiple categories match', () => {
     const mixed = {
       hypothalamus: {
